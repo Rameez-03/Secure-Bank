@@ -1,5 +1,15 @@
-export const getMain =  (req,res) => {
-  res.send("in main");
+import User from "../models/User.js"
+
+export async function getUser(req,res) {
+  try {
+    const user = await User.find()
+    res.status(200).json(user)
+
+  } catch (error) {
+    console.error("Error in getUser", error)
+    res.status(500).json({message:"Internal Error"})
+  }
+
 }
 
 export const postMain =  (req,res) => {

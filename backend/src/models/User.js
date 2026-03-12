@@ -27,12 +27,16 @@ const UserSchema = new Schema({
     ],
     budget: {
         type: Number,
-        required: false
+        required: false,
+        default: 0
     },
     streaks: {
         type: Number,
-        required: false
+        required: false,
+        default: 0
     },
+}, {
+    timestamps: true
 });
 
-module.exports = mongoose.model('User', UserSchema);
+export default mongoose.model('User', UserSchema);
