@@ -4,6 +4,8 @@ import cors from "cors";
 import dotenv from "dotenv";
 import authRoutes from "./routes/authRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
+import transactionRoutes from "./routes/transactionRoutes.js";
+import plaidRoutes from "./routes/plaidRoutes.js";
 
 // Load environment variables
 dotenv.config();
@@ -47,6 +49,9 @@ app.get("/health", (req, res) => {
 // API routes
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/transactions", transactionRoutes);
+app.use("/api/plaid", plaidRoutes);
+app.use("/api/transactions", transactionRoutes);
 
 // 404 handler
 app.use((req, res) => {

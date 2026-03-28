@@ -2,10 +2,6 @@ import mongoose from 'mongoose';
 const Schema = mongoose.Schema;
 
 const UserSchema = new Schema({
-    accessToken: {
-        type: String,
-        required: false
-    },
     name: {
         type: String,
         required: true
@@ -19,6 +15,16 @@ const UserSchema = new Schema({
         type: String,
         required: true
     },
+    // Plaid Integration
+    accessToken: {
+        type: String,
+        required: false
+    },
+    plaidItemId: {
+        type: String,
+        required: false
+    },
+    // User Data
     transactions: [
         {
             type: Schema.Types.ObjectId,
