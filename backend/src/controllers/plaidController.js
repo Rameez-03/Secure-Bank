@@ -1,24 +1,27 @@
 import { Configuration, PlaidApi, PlaidEnvironments, Products, CountryCode } from 'plaid';
 import User from '../models/userModel.js';
 
-// Initialize Plaid client with latest API version
-const configuration = new Configuration({
-  basePath: PlaidEnvironments[process.env.PLAID_ENV || 'sandbox'],
-  baseOptions: {
-    headers: {
-      'PLAID-CLIENT-ID': process.env.PLAID_CLIENT_ID,
-      'PLAID-SECRET': process.env.PLAID_SECRET,
-      'Plaid-Version': '2020-09-14', // Latest stable version
+// Helper function to get Plaid client (creates new instance each time with current env vars)
+const getPlaidClient = () => {
+  const configuration = new Configuration({
+    basePath: PlaidEnvironments[process.env.PLAID_ENV || 'sandbox'],
+    baseOptions: {
+      headers: {
+        'PLAID-CLIENT-ID': process.env.PLAID_CLIENT_ID,
+        'PLAID-SECRET': process.env.PLAID_SECRET,
+      },
     },
-  },
-});
+  });
+  
+  return new PlaidApi(configuration);
+};
 
-const plaidClient = new PlaidApi(configuration);
-
-// Create Link Token (Updated to latest API)
+// Create Link Token
 export const createLinkToken = async (req, res) => {
   try {
-    const configs = {
+    const plaidClient = getPlaidClient(); // Get client with current env vars
+
+    const request = {
       user: {
         client_user_id: req.user.userId.toString(),
       },
@@ -28,12 +31,11 @@ export const createLinkToken = async (req, res) => {
       language: 'en',
     };
 
-    // Add redirect_uri if provided
     if (process.env.PLAID_REDIRECT_URI) {
-      configs.redirect_uri = process.env.PLAID_REDIRECT_URI;
+      request.redirect_uri = process.env.PLAID_REDIRECT_URI;
     }
-
-    const createTokenResponse = await plaidClient.linkTokenCreate(configs);
+    
+    const createTokenResponse = await plaidClient.linkTokenCreate(request);
     
     res.status(200).json({
       success: true,
@@ -48,7 +50,7 @@ export const createLinkToken = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error creating link token",
-      error: error.response?.data?.error_message || error.message
+      error: error.response?.data || error.message
     });
   }
 };
@@ -56,6 +58,7 @@ export const createLinkToken = async (req, res) => {
 // Exchange Public Token for Access Token
 export const exchangePublicToken = async (req, res) => {
   try {
+    const plaidClient = getPlaidClient();
     const { public_token } = req.body;
 
     if (!public_token) {
@@ -91,14 +94,15 @@ export const exchangePublicToken = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error linking bank account",
-      error: error.response?.data?.error_message || error.message
+      error: error.response?.data || error.message
     });
   }
 };
 
-// Get Auth (Account & Routing Numbers)
+// Get Auth
 export const getAuth = async (req, res) => {
   try {
+    const plaidClient = getPlaidClient();
     const { access_token } = req.body;
 
     if (!access_token) {
@@ -126,15 +130,15 @@ export const getAuth = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error fetching account details",
-      error: error.response?.data?.error_message || error.message
+      error: error.response?.data || error.message
     });
   }
 };
 
-// Get Account Balance
+// Get Balance
 export const getBalance = async (req, res) => {
   try {
-    // Get user's access token from database
+    const plaidClient = getPlaidClient();
     const user = await User.findById(req.user.userId);
 
     if (!user || !user.accessToken) {
@@ -161,14 +165,15 @@ export const getBalance = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error fetching account balance",
-      error: error.response?.data?.error_message || error.message
+      error: error.response?.data || error.message
     });
   }
 };
 
-// Get Institution Info
+// Get Institution
 export const getInstitution = async (req, res) => {
   try {
+    const plaidClient = getPlaidClient();
     const { institution_id } = req.body;
 
     if (!institution_id) {
@@ -195,14 +200,15 @@ export const getInstitution = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error fetching institution details",
-      error: error.response?.data?.error_message || error.message
+      error: error.response?.data || error.message
     });
   }
 };
 
-// Get Transactions from Plaid (Updated to use TransactionsSync)
+// Get Transactions
 export const getPlaidTransactions = async (req, res) => {
   try {
+    const plaidClient = getPlaidClient();
     const { access_token, start_date, end_date } = req.body;
 
     if (!access_token) {
@@ -220,18 +226,14 @@ export const getPlaidTransactions = async (req, res) => {
 
     const plaidResponse = await plaidClient.transactionsGet(request);
 
-    // Fetch all pages if there are more transactions
+    // Fetch all pages
     let transactions = plaidResponse.data.transactions;
     const totalTransactions = plaidResponse.data.total_transactions;
     
     while (transactions.length < totalTransactions) {
       const paginatedRequest = {
-        access_token: access_token,
-        start_date: request.start_date,
-        end_date: request.end_date,
-        options: {
-          offset: transactions.length,
-        },
+        ...request,
+        options: { offset: transactions.length },
       };
       const paginatedResponse = await plaidClient.transactionsGet(paginatedRequest);
       transactions = transactions.concat(paginatedResponse.data.transactions);
@@ -251,15 +253,15 @@ export const getPlaidTransactions = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error fetching transactions",
-      error: error.response?.data?.error_message || error.message
+      error: error.response?.data || error.message
     });
   }
 };
 
-// Sync Plaid Transactions to Database (Updated)
+// Sync Transactions
 export const syncTransactions = async (req, res) => {
   try {
-    // Get user's access token from database
+    const plaidClient = getPlaidClient();
     const user = await User.findById(req.user.userId);
 
     if (!user || !user.accessToken) {
@@ -269,7 +271,6 @@ export const syncTransactions = async (req, res) => {
       });
     }
 
-    // Get transactions from Plaid (last 2 years)
     const startDate = new Date();
     startDate.setFullYear(startDate.getFullYear() - 2);
     
@@ -281,7 +282,6 @@ export const syncTransactions = async (req, res) => {
 
     const plaidResponse = await plaidClient.transactionsGet(request);
     
-    // Fetch all pages
     let allTransactions = plaidResponse.data.transactions;
     const totalTransactions = plaidResponse.data.total_transactions;
     
@@ -294,14 +294,10 @@ export const syncTransactions = async (req, res) => {
       allTransactions = allTransactions.concat(paginatedResponse.data.transactions);
     }
 
-    // Import Transaction model
     const Transaction = (await import('../models/transactionModel.js')).default;
-
-    // Save transactions to database
     const savedTransactions = [];
     
     for (const plaidTxn of allTransactions) {
-      // Check if transaction already exists
       const existingTxn = await Transaction.findOne({ 
         plaidTransactionId: plaidTxn.transaction_id 
       });
@@ -318,9 +314,8 @@ export const syncTransactions = async (req, res) => {
           isManual: false
         });
 
-        // Add to user's transactions array
         await User.findByIdAndUpdate(req.user.userId, {
-          $addToSet: { transactions: newTransaction._id } // Use $addToSet to avoid duplicates
+          $addToSet: { transactions: newTransaction._id }
         });
 
         savedTransactions.push(newTransaction);
@@ -342,29 +337,27 @@ export const syncTransactions = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error syncing transactions",
-      error: error.response?.data?.error_message || error.message
+      error: error.response?.data || error.message
     });
   }
 };
 
-// Remove Item (Unlink Bank Account)
+// Remove Link
 export const removePlaidLink = async (req, res) => {
   try {
+    const plaidClient = getPlaidClient();
     const user = await User.findById(req.user.userId);
 
     if (user && user.accessToken) {
-      // Remove item from Plaid
       try {
         await plaidClient.itemRemove({
           access_token: user.accessToken,
         });
       } catch (plaidError) {
         console.error("Error removing Plaid item:", plaidError);
-        // Continue anyway to unlink from our database
       }
     }
 
-    // Remove from database
     await User.findByIdAndUpdate(req.user.userId, {
       $unset: { accessToken: "", plaidItemId: "" }
     });
@@ -378,7 +371,8 @@ export const removePlaidLink = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error unlinking bank account",
-      error: error.response?.data?.error_message || error.message
+      error: error.response?.data || error.message
     });
   }
 };
+
