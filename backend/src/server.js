@@ -1,7 +1,12 @@
+import dns from "dns";
 import express from "express";
 import mongoose from "mongoose";
 import cors from "cors";
 import dotenv from "dotenv";
+
+// Virgin Media (and some other ISPs) block Node.js c-ares DNS on Windows.
+// Force Google / Cloudflare resolvers so MongoDB Atlas SRV lookups work.
+dns.setServers(["8.8.8.8", "1.1.1.1"]);
 import authRoutes from "./routes/authRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import transactionRoutes from "./routes/transactionRoutes.js";
@@ -18,10 +23,20 @@ const PORT = process.env.PORT || 5000;
 // ==========================================
 
 // CORS
-app.use(cors({
-  origin: process.env.FRONTEND_URL || "http://localhost:3000",
-  credentials: true
-}));
+const allowedOrigins =
+  process.env.NODE_ENV === "production"
+    ? [process.env.FRONTEND_URL]
+    : ["http://localhost:3000", "http://localhost:3001", "http://localhost:3002"];
+
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+      cb(new Error(`CORS blocked: ${origin}`));
+    },
+    credentials: true,
+  })
+);
 
 // Body parser
 app.use(express.json());
