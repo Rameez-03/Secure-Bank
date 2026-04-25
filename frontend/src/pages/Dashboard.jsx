@@ -42,6 +42,7 @@ export default function Dashboard() {
   const [bankInfo, setBankInfo] = useState(null);
   const [bankConnected, setBankConnected] = useState(false);
   const [bankLoading, setBankLoading] = useState(true);
+  const [healthKey, setHealthKey] = useState(0);
 
   const fetchBankInfo = async () => {
     try {
@@ -62,6 +63,7 @@ export default function Dashboard() {
   const handleRefresh = () => {
     refetch();
     fetchBankInfo();
+    setHealthKey((k) => k + 1);
   };
 
   const handleUpdateBudget = async (budget) => {
@@ -150,7 +152,7 @@ export default function Dashboard() {
           transactions={transactions}
           onUpdateBudget={handleUpdateBudget}
         />
-        <HealthScoreWidget />
+        <HealthScoreWidget refreshKey={healthKey} />
         <BankCardWidget
           bankInfo={bankInfo}
           isConnected={bankConnected}

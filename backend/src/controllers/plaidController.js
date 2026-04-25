@@ -385,29 +385,35 @@ export const syncTransactions = async (req, res) => {
   }
 };
 
-// Remove Link
+// Remove Link — revokes Plaid access, deletes all transactions, clears user state
 export const removePlaidLink = async (req, res) => {
   try {
     const plaidClient = getPlaidClient();
     const user = await User.findById(req.user.userId);
 
-    if (user && user.accessToken) {
+    // Revoke the Plaid item (best-effort — don't fail if Plaid errors)
+    if (user?.accessToken) {
       try {
-        await plaidClient.itemRemove({
-          access_token: user.accessToken,
-        });
+        await plaidClient.itemRemove({ access_token: user.accessToken });
       } catch (plaidError) {
-        console.error("Error removing Plaid item:", plaidError);
+        console.error("Plaid itemRemove error (continuing):", plaidError?.response?.data || plaidError.message);
       }
     }
 
+    const Transaction = (await import('../models/transactionModel.js')).default;
+
+    // Delete every transaction document belonging to this user
+    await Transaction.deleteMany({ userId: req.user.userId });
+
+    // Clear all Plaid fields and empty the transactions reference array
     await User.findByIdAndUpdate(req.user.userId, {
-      $unset: { accessToken: "", plaidItemId: "" }
+      $unset: { accessToken: "", plaidItemId: "", plaidCursor: "" },
+      $set: { transactions: [] },
     });
 
     res.status(200).json({
       success: true,
-      message: "Bank account unlinked successfully"
+      message: "Bank account unlinked and all transactions deleted"
     });
   } catch (error) {
     console.error("Error removing Plaid link:", error.response?.data || error);

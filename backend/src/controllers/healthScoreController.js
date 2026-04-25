@@ -12,8 +12,8 @@ export const getHealthScore = async (req, res) => {
 
     const transactions = await Transaction.find({ userId });
 
-    // No data yet — don't award default "no budget" points
-    if (transactions.length === 0 && (!user.budget || user.budget <= 0)) {
+    // No transactions = no meaningful data to score against
+    if (transactions.length === 0) {
       return res.status(200).json({
         success: true,
         data: {

@@ -23,7 +23,23 @@ const GaugeWrap = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+`;
+
+const ScoreBar = styled.div`
+  width: 100%;
+  height: 5px;
+  background: #1E1E1E;
+  border-radius: 99px;
+  overflow: hidden;
+`;
+
+const ScoreBarFill = styled.div`
+  height: 100%;
+  border-radius: 99px;
+  width: ${({ $pct }) => Math.min($pct, 100)}%;
+  background: ${({ $color }) => $color || '#DC2626'};
+  transition: width 0.7s ease;
 `;
 
 const ScoreRow = styled.div`
@@ -33,14 +49,14 @@ const ScoreRow = styled.div`
 `;
 
 const ScoreLabel = styled.span`
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 17px;
+  font-weight: 700;
   color: ${({ $color }) => $color || '#FAFAFA'};
 `;
 
 const ScoreSub = styled.span`
-  font-size: 11px;
-  color: #52525B;
+  font-size: 15px;
+  color: #71717A;
 `;
 
 const ComponentList = styled.div`
@@ -120,9 +136,10 @@ function GaugeArc({ score, color }) {
   const p = Math.max(0, Math.min(100, score)) / 100;
 
   return (
-    <svg viewBox="18 12 144 78" width="100%" style={{ display: 'block', maxWidth: 200, margin: '0 auto' }}>
+    <div style={{ overflow: 'hidden', maxWidth: 200, margin: '0 auto' }}>
+    <svg viewBox="18 8 144 72" width="100%" style={{ display: 'block' }}>
       {/* Track */}
-      <path d={ARC} fill="none" stroke="#1E1E1E" strokeWidth="9" strokeLinecap="round" />
+      <path d={ARC} fill="none" stroke="#1E1E1E" strokeWidth="9" strokeLinecap="butt" />
       {/* Fill */}
       {p > 0 && (
         <path
@@ -130,7 +147,7 @@ function GaugeArc({ score, color }) {
           fill="none"
           stroke={color || '#DC2626'}
           strokeWidth="9"
-          strokeLinecap="round"
+          strokeLinecap="butt"
           strokeDasharray={`${p * CIRCUMFERENCE} ${CIRCUMFERENCE}`}
         />
       )}
@@ -147,19 +164,21 @@ function GaugeArc({ score, color }) {
         {score}
       </text>
     </svg>
+    </div>
   );
 }
 
-export default function HealthScoreWidget() {
+export default function HealthScoreWidget({ refreshKey = 0 }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setLoading(true);
     userAPI.getHealthScore()
       .then(({ data: res }) => setData(res.data))
       .catch(() => setData(null))
       .finally(() => setLoading(false));
-  }, []);
+  }, [refreshKey]);
 
   return (
     <Card>
