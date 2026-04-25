@@ -136,7 +136,8 @@ export default function SpendingChart({ transactions = [] }) {
         <LegendItem><LegendDot $color="#DC2626" /> This month</LegendItem>
         <LegendItem><LegendDot $color="#3F3F46" /> Last month</LegendItem>
       </LegendRow>
-      <ResponsiveContainer width="100%" height={220}>
+      <div style={{ flex: 1, minHeight: 0 }}>
+      <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data} margin={{ top: 4, right: 4, left: -22, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#1E1E1E" vertical={false} />
           <XAxis
@@ -171,6 +172,7 @@ export default function SpendingChart({ transactions = [] }) {
           />
         </LineChart>
       </ResponsiveContainer>
+      </div>
     </Card>
   );
 }

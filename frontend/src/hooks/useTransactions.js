@@ -31,7 +31,7 @@ export const useTransactions = () => {
 
   const addTransaction = async (txData) => {
     const { data } = await transactionAPI.create(txData);
-    setTransactions((prev) => [data.data, ...prev]);
+    setTransactions((prev) => [data.data.transaction, ...prev]);
     toast.success('Transaction added');
     return data.data;
   };

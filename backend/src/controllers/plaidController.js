@@ -258,7 +258,7 @@ export const getPlaidTransactions = async (req, res) => {
   }
 };
 
-// Sync Transactions
+// Sync Transactions — uses cursor-based /transactions/sync (Plaid recommended)
 export const syncTransactions = async (req, res) => {
   try {
     const plaidClient = getPlaidClient();
@@ -271,73 +271,116 @@ export const syncTransactions = async (req, res) => {
       });
     }
 
-    const startDate = new Date();
-    startDate.setFullYear(startDate.getFullYear() - 2);
-    
-    const request = {
-      access_token: user.accessToken,
-      start_date: startDate.toISOString().split('T')[0],
-      end_date: new Date().toISOString().split('T')[0],
-    };
+    const Transaction = (await import('../models/transactionModel.js')).default;
 
-    const plaidResponse = await plaidClient.transactionsGet(request);
-    
-    let allTransactions = plaidResponse.data.transactions;
-    const totalTransactions = plaidResponse.data.total_transactions;
-    
-    while (allTransactions.length < totalTransactions) {
-      const paginatedRequest = {
-        ...request,
-        options: { offset: allTransactions.length },
-      };
-      const paginatedResponse = await plaidClient.transactionsGet(paginatedRequest);
-      allTransactions = allTransactions.concat(paginatedResponse.data.transactions);
+    // Drain all pages from /transactions/sync
+    // If cursor is stale (Plaid returns an error), reset to full re-fetch
+    let cursor = req.body?.reset ? null : (user.plaidCursor || null);
+    let added = [];
+    let modified = [];
+    let removed = [];
+    let hasMore = true;
+
+    while (hasMore) {
+      const params = { access_token: user.accessToken };
+      if (cursor) params.cursor = cursor;
+
+      let response;
+      try {
+        response = await plaidClient.transactionsSync(params);
+      } catch (syncErr) {
+        // Plaid cursor is stale — reset and start fresh
+        const code = syncErr.response?.data?.error_code;
+        if (code === 'TRANSACTIONS_SYNC_MUTATION_DURING_PAGINATION' || cursor) {
+          cursor = null;
+          added = []; modified = []; removed = [];
+          const retry = await plaidClient.transactionsSync({ access_token: user.accessToken });
+          response = retry;
+        } else {
+          throw syncErr;
+        }
+      }
+
+      const { data } = response;
+      added    = added.concat(data.added    || []);
+      modified = modified.concat(data.modified || []);
+      removed  = removed.concat(data.removed  || []);
+      hasMore  = data.has_more;
+      cursor   = data.next_cursor;
     }
 
-    const Transaction = (await import('../models/transactionModel.js')).default;
-    const savedTransactions = [];
-    
-    for (const plaidTxn of allTransactions) {
-      const existingTxn = await Transaction.findOne({ 
-        plaidTransactionId: plaidTxn.transaction_id 
-      });
+    // Persist cursor so next sync only fetches new changes
+    await User.findByIdAndUpdate(user._id, { plaidCursor: cursor });
 
-      if (!existingTxn) {
-        const newTransaction = await Transaction.create({
-          userId: req.user.userId,
-          plaidTransactionId: plaidTxn.transaction_id,
-          date: plaidTxn.date,
-          description: plaidTxn.name,
-          amount: plaidTxn.amount,
-          category: plaidTxn.category?.[0] || 'Other',
-          pending: plaidTxn.pending,
-          isManual: false
+    // Helper: Plaid amount sign convention (positive = debit/expense) → invert for our app
+    const toAmount = (plaidAmount) => -plaidAmount;
+
+    const toCategory = (txn) =>
+      txn.personal_finance_category?.primary ||
+      (Array.isArray(txn.category) ? txn.category[0] : null) ||
+      'Other';
+
+    // ── ADDED ──────────────────────────────────────────────────────────────
+    let savedCount = 0;
+    for (const txn of added) {
+      const exists = await Transaction.findOne({ plaidTransactionId: txn.transaction_id });
+      if (!exists) {
+        const newTx = await Transaction.create({
+          userId: user._id,
+          plaidTransactionId: txn.transaction_id,
+          date: txn.date,
+          description: txn.name,
+          amount: toAmount(txn.amount),
+          category: toCategory(txn),
+          pending: txn.pending,
+          isManual: false,
         });
-
-        await User.findByIdAndUpdate(req.user.userId, {
-          $addToSet: { transactions: newTransaction._id }
-        });
-
-        savedTransactions.push(newTransaction);
+        await User.findByIdAndUpdate(user._id, { $addToSet: { transactions: newTx._id } });
+        savedCount++;
       }
     }
+
+    // ── MODIFIED ───────────────────────────────────────────────────────────
+    let modifiedCount = 0;
+    for (const txn of modified) {
+      const result = await Transaction.findOneAndUpdate(
+        { plaidTransactionId: txn.transaction_id },
+        {
+          date: txn.date,
+          description: txn.name,
+          amount: toAmount(txn.amount),
+          category: toCategory(txn),
+          pending: txn.pending,
+        }
+      );
+      if (result) modifiedCount++;
+    }
+
+    // ── REMOVED ────────────────────────────────────────────────────────────
+    let removedCount = 0;
+    for (const txn of removed) {
+      const deleted = await Transaction.findOneAndDelete({ plaidTransactionId: txn.transaction_id });
+      if (deleted) {
+        await User.findByIdAndUpdate(user._id, { $pull: { transactions: deleted._id } });
+        removedCount++;
+      }
+    }
+
+    console.log(`Sync complete: +${savedCount} added, ~${modifiedCount} modified, -${removedCount} removed`);
 
     res.status(200).json({
       success: true,
-      message: `Synced ${savedTransactions.length} new transactions`,
-      data: {
-        synced_count: savedTransactions.length,
-        total_plaid_transactions: allTransactions.length,
-        request_id: plaidResponse.data.request_id
-      }
+      message: `Sync complete: ${savedCount} new, ${modifiedCount} updated, ${removedCount} removed`,
+      data: { added: savedCount, modified: modifiedCount, removed: removedCount }
     });
 
   } catch (error) {
-    console.error("Error syncing transactions:", error.response?.data || error);
+    const plaidErr = error.response?.data;
+    console.error("Sync error:", plaidErr || error.message || error);
     res.status(500).json({
       success: false,
-      message: "Error syncing transactions",
-      error: error.response?.data || error.message
+      message: plaidErr?.error_message || plaidErr?.message || "Error syncing transactions",
+      plaid_error: plaidErr || null,
     });
   }
 };

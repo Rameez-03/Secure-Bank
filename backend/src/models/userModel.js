@@ -24,6 +24,11 @@ const UserSchema = new Schema({
         type: String,
         required: false
     },
+    plaidCursor: {
+        type: String,
+        required: false,
+        default: null
+    },
     // User Data
     transactions: [
         {
@@ -32,11 +37,6 @@ const UserSchema = new Schema({
         }
     ],
     budget: {
-        type: Number,
-        required: false,
-        default: 0
-    },
-    streaks: {
         type: Number,
         required: false,
         default: 0

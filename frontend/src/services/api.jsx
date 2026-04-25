@@ -82,6 +82,7 @@ export const userAPI = {
   getUser: (userId) => API.get(`/users/${userId}`),
   updateBudget: (userId, budget) => API.put(`/users/${userId}/budget`, { budget }),
   updateProfile: (userId, data) => API.put(`/users/${userId}`, data),
+  getHealthScore: () => API.get('/users/health-score'),
 };
 
 // ==========================================
@@ -114,7 +115,7 @@ export const plaidAPI = {
       start_date: startDate,
       end_date: endDate,
     }),
-  syncTransactions: () => API.post("/plaid/sync"),
+  syncTransactions: (reset = false) => API.post("/plaid/sync", { reset }),
   unlinkBank: () => API.delete("/plaid/unlink"),
 };
 

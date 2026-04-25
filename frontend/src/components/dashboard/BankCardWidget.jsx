@@ -16,6 +16,13 @@ const Card = styled.div`
   gap: 12px;
 `;
 
+const CardBody = styled.div`
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+`;
+
 const Row = styled.div`
   display: flex;
   align-items: center;
@@ -53,32 +60,37 @@ const Btn = styled.button`
 `;
 
 const BankCard = styled.div`
-  background: linear-gradient(135deg, #1A0A0A 0%, #2D1515 50%, #1A0A0A 100%);
-  border: 1px solid rgba(220,38,38,0.2);
-  border-radius: 10px;
-  padding: 16px;
+  background: linear-gradient(135deg, #1A0505 0%, #2D1010 45%, #1C0808 100%);
+  border: 1px solid rgba(220,38,38,0.25);
+  border-radius: 14px;
+  padding: 16px 18px;
   position: relative;
   overflow: hidden;
+  width: 100%;
+  aspect-ratio: 1.586;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 
   &::before {
     content: '';
     position: absolute;
-    top: -30px;
-    right: -30px;
-    width: 100px;
-    height: 100px;
-    background: rgba(220,38,38,0.08);
+    top: -60px;
+    right: -60px;
+    width: 200px;
+    height: 200px;
+    background: radial-gradient(circle, rgba(220,38,38,0.15) 0%, transparent 70%);
     border-radius: 50%;
   }
 
   &::after {
     content: '';
     position: absolute;
-    bottom: -20px;
-    right: 20px;
-    width: 70px;
-    height: 70px;
-    background: rgba(220,38,38,0.05);
+    bottom: -40px;
+    left: -20px;
+    width: 160px;
+    height: 160px;
+    background: radial-gradient(circle, rgba(220,38,38,0.06) 0%, transparent 70%);
     border-radius: 50%;
   }
 `;
@@ -87,19 +99,56 @@ const CardTop = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 16px;
+`;
+
+const Chip = styled.div`
+  width: 30px;
+  height: 22px;
+  background: linear-gradient(135deg, #D97706 0%, #F59E0B 40%, #B45309 100%);
+  border-radius: 5px;
+  position: relative;
+  overflow: hidden;
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: rgba(0,0,0,0.2);
+    transform: translateY(-50%);
+  }
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    bottom: 0;
+    width: 1px;
+    background: rgba(0,0,0,0.15);
+    transform: translateX(-50%);
+  }
+`;
+
+const CardBottom = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 `;
 
 const BankName = styled.p`
-  font-size: 11px;
-  color: rgba(255,255,255,0.5);
-  margin: 0 0 4px;
+  font-size: 10px;
+  color: rgba(255,255,255,0.45);
+  margin: 0 0 2px;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.1em;
+  font-weight: 500;
 `;
 
 const Balance = styled.p`
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 700;
   color: #FAFAFA;
   margin: 0;
@@ -107,10 +156,28 @@ const Balance = styled.p`
 `;
 
 const AccountMask = styled.p`
-  font-size: 12px;
-  color: rgba(255,255,255,0.4);
+  font-size: 13px;
+  color: rgba(255,255,255,0.5);
   margin: 0;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.18em;
+  font-weight: 400;
+`;
+
+const CardHolderLabel = styled.p`
+  font-size: 9px;
+  color: rgba(255,255,255,0.3);
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+`;
+
+const CardHolderName = styled.p`
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.7);
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 `;
 
 const spin = keyframes`to { transform: rotate(360deg); }`;
@@ -180,11 +247,21 @@ export default function BankCardWidget({ bankInfo, isConnected, onRefresh }) {
     onSuccess: async (publicToken) => {
       try {
         await plaidAPI.exchangePublicToken(publicToken);
-        toast.success('Bank account connected!');
-        onRefresh?.();
+        toast.success('Bank connected!');
       } catch {
         toast.error('Failed to connect bank account');
+        return;
       }
+      // Brief delay to let Plaid finish initializing the connection before syncing
+      await new Promise((r) => setTimeout(r, 1500));
+      try {
+        toast.info('Syncing transactions…');
+        const { data } = await plaidAPI.syncTransactions(true);
+        toast.success(data?.message || 'Transactions synced!');
+      } catch (err) {
+        toast.warn(err.response?.data?.message || 'Sync failed — click Sync to retry.');
+      }
+      onRefresh?.();
     },
   });
 
@@ -207,11 +284,11 @@ export default function BankCardWidget({ bankInfo, isConnected, onRefresh }) {
   const handleSync = async () => {
     try {
       setSyncing(true);
-      await plaidAPI.syncTransactions();
-      toast.success('Transactions synced!');
+      const { data } = await plaidAPI.syncTransactions(true);
+      toast.success(data?.message || 'Transactions synced!');
       onRefresh?.();
-    } catch {
-      toast.error('Sync failed');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Sync failed');
     } finally {
       setSyncing(false);
     }
@@ -251,31 +328,47 @@ export default function BankCardWidget({ bankInfo, isConnected, onRefresh }) {
         )}
       </Row>
 
-      {isConnected && account ? (
-        <BankCard>
-          <CardTop>
-            <div>
-              <BankName>{account.name}</BankName>
-              <Balance>{formatCurrency(account.balances?.available ?? account.balances?.current ?? 0)}</Balance>
-            </div>
-            <Wifi size={16} color="rgba(220,38,38,0.6)" />
-          </CardTop>
-          <AccountMask>
-            {account.mask ? `•••• •••• •••• ${account.mask}` : account.official_name || 'Connected'}
-          </AccountMask>
-        </BankCard>
-      ) : (
-        <EmptyCard>
-          <EmptyIcon>
-            <CreditCard size={20} strokeWidth={1.5} />
-          </EmptyIcon>
-          <EmptyTitle>No Card Available</EmptyTitle>
-          <EmptySub>Connect a bank account to see your balance</EmptySub>
-          <ConnectBtn onClick={handleConnect} disabled={fetchingToken}>
-            {fetchingToken ? 'Loading…' : 'Connect Card'}
-          </ConnectBtn>
-        </EmptyCard>
-      )}
+      <CardBody>
+        {isConnected && account ? (
+          <BankCard>
+            <CardTop>
+              <div>
+                <BankName>{account.subtype?.toUpperCase() || 'CHECKING'}</BankName>
+                <Balance>{formatCurrency(account.balances?.available ?? account.balances?.current ?? 0)}</Balance>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                <Wifi size={15} color="rgba(220,38,38,0.7)" />
+                <Chip />
+              </div>
+            </CardTop>
+            <CardBottom>
+              <AccountMask>
+                {account.mask ? `•••• •••• •••• ${account.mask}` : '•••• •••• •••• 0000'}
+              </AccountMask>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                <div>
+                  <CardHolderLabel>Account</CardHolderLabel>
+                  <CardHolderName>{account.name}</CardHolderName>
+                </div>
+                <CardHolderLabel style={{ fontSize: 10, color: 'rgba(220,38,38,0.5)', fontWeight: 600, letterSpacing: '0.06em' }}>
+                  SECURE BANK
+                </CardHolderLabel>
+              </div>
+            </CardBottom>
+          </BankCard>
+        ) : (
+          <EmptyCard>
+            <EmptyIcon>
+              <CreditCard size={20} strokeWidth={1.5} />
+            </EmptyIcon>
+            <EmptyTitle>No Card Available</EmptyTitle>
+            <EmptySub>Connect a bank account to see your balance</EmptySub>
+            <ConnectBtn onClick={handleConnect} disabled={fetchingToken}>
+              {fetchingToken ? 'Loading…' : 'Connect Card'}
+            </ConnectBtn>
+          </EmptyCard>
+        )}
+      </CardBody>
     </Card>
   );
 }

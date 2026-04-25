@@ -11,49 +11,28 @@ import RecentTransactions from '../components/dashboard/RecentTransactions';
 import SpendingChart from '../components/dashboard/SpendingChart';
 import MonthlySpending from '../components/dashboard/MonthlySpending';
 import BudgetWidget from '../components/dashboard/BudgetWidget';
-import StreaksWidget from '../components/dashboard/StreaksWidget';
+import HealthScoreWidget from '../components/dashboard/HealthScoreWidget';
 import BankCardWidget from '../components/dashboard/BankCardWidget';
-
-const PageHeader = styled.div`
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  margin-bottom: 22px;
-`;
-
-const PageTitle = styled.h1`
-  font-size: 26px;
-  font-weight: 700;
-  color: #FAFAFA;
-  margin: 0;
-  letter-spacing: -0.03em;
-`;
-
-const TotalBalance = styled.span`
-  font-size: 26px;
-  font-weight: 700;
-  color: #FAFAFA;
-  letter-spacing: -0.03em;
-`;
 
 const StatsGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 14px;
-  margin-bottom: 18px;
+  gap: 10px;
+  margin-bottom: 10px;
 `;
 
 const MainGrid = styled.div`
   display: grid;
-  grid-template-columns: 260px 1fr 260px;
-  gap: 14px;
-  margin-bottom: 14px;
+  grid-template-columns: 240px 1fr 240px;
+  grid-template-rows: 350px;
+  gap: 10px;
+  margin-bottom: 10px;
 `;
 
 const BottomGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 14px;
+  grid-template-columns: 1fr 1fr 300px;
+  gap: 10px;
 `;
 
 export default function Dashboard() {
@@ -127,11 +106,6 @@ export default function Dashboard() {
 
   return (
     <div>
-      <PageHeader>
-        <PageTitle>Overview</PageTitle>
-        <TotalBalance>{formatCurrency(stats.balance)}</TotalBalance>
-      </PageHeader>
-
       <StatsGrid>
         <StatCard
           label="Total Balance"
@@ -173,9 +147,10 @@ export default function Dashboard() {
         <BudgetWidget
           budget={stats.budget}
           monthlySpending={stats.spending}
+          transactions={transactions}
           onUpdateBudget={handleUpdateBudget}
         />
-        <StreaksWidget streaks={user?.streaks ?? 0} />
+        <HealthScoreWidget />
         <BankCardWidget
           bankInfo={bankInfo}
           isConnected={bankConnected}

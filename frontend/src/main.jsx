@@ -22,7 +22,7 @@ const GlobalStyle = createGlobalStyle`
     padding: 0;
     background: #0A0A0A;
     color: #FAFAFA;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     font-size: 14px;
     line-height: 1.5;
   }

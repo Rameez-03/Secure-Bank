@@ -5,10 +5,10 @@ const Card = styled.div`
   background: #141414;
   border: 1px solid #222222;
   border-radius: 12px;
-  padding: 18px 20px;
+  padding: 14px 18px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 `;
 
 const Top = styled.div`

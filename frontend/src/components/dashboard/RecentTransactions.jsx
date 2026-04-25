@@ -125,7 +125,7 @@ function getCategoryStyle(category) {
 }
 
 export default function RecentTransactions({ transactions = [] }) {
-  const recent = transactions.slice(0, 8);
+  const recent = transactions.slice(0, 5);
 
   return (
     <Card>

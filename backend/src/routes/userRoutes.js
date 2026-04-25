@@ -1,8 +1,12 @@
 import express from "express";
 import { protect } from "../middleware/authMiddleware.js";
 import User from "../models/userModel.js";
+import { getHealthScore } from "../controllers/healthScoreController.js";
 
 const router = express.Router();
+
+// Financial Health Score
+router.get("/health-score", protect, getHealthScore);
 
 // Get user by ID (protected)
 router.get("/:id", protect, async (req, res) => {
