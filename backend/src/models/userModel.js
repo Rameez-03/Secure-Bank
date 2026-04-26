@@ -26,6 +26,9 @@ const UserSchema = new mongoose.Schema(
     accessToken: { type: String, select: false },
     plaidItemId: { type: String },
     plaidCursor: { type: String, default: null },
+    // Password reset — hashed token + expiry; excluded from all default queries
+    resetPasswordToken: { type: String, select: false },
+    resetPasswordExpires: { type: Date, select: false },
     transactions: [{ type: mongoose.Schema.Types.ObjectId, ref: "Transaction" }],
     budget: { type: Number, default: 0, min: [0, "Budget cannot be negative"] },
   },

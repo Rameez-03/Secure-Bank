@@ -26,6 +26,7 @@
     "hpp": "^0.2.3",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^7.0.3",
+    "nodemailer": "^8.0.6",
     "plaid": "^41.4.0"
   },
   "devDependencies": {

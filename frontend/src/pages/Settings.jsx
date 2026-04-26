@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import { Check, Eye, EyeOff } from 'lucide-react';
 import { AuthContext } from '../context/AuthContext';
 import { userAPI, authAPI, plaidAPI, setAccessToken } from '../services/api';
+import { isStrongPassword } from '../utils/validators';
 import { toast } from 'react-toastify';
 import Button from '../components/common/Button';
 import Input from '../components/common/Input';
@@ -150,12 +151,19 @@ export default function Settings() {
 
   const handlePasswordSave = async (e) => {
     e.preventDefault();
-    if (!passwords.current || !passwords.newPass) return toast.error('Fill in all password fields');
-    if (passwords.newPass.length < 12) return toast.error('Password must be at least 12 characters');
+    if (!passwords.current || !passwords.newPass || !passwords.confirm) {
+      return toast.error('Fill in all password fields');
+    }
+    if (!isStrongPassword(passwords.newPass)) {
+      return toast.error('New password must be 12+ characters with uppercase, lowercase, number, and special character');
+    }
     if (passwords.newPass !== passwords.confirm) return toast.error('Passwords do not match');
+    if (passwords.current === passwords.newPass) return toast.error('New password must differ from your current password');
     try {
       setSavingPw(true);
-      toast.info('Password change coming soon — backend endpoint needed');
+      await authAPI.changePassword({ currentPassword: passwords.current, newPassword: passwords.newPass });
+      setPasswords({ current: '', newPass: '', confirm: '' });
+      toast.success('Password updated successfully');
     } catch (err) {
       toast.error(err.response?.data?.message || 'Update failed');
     } finally {

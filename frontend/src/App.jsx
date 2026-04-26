@@ -9,6 +9,8 @@ import Analytics from './pages/Analytics';
 import Settings from './pages/Settings';
 import Signin from './pages/Signin';
 import Signup from './pages/Signup';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import LoadingSpinner from './components/common/LoadingSpinner';
 
 function ProtectedRoute({ children }) {
@@ -32,6 +34,8 @@ export default function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/signin" element={<PublicRoute><Signin /></PublicRoute>} />
         <Route path="/signup" element={<PublicRoute><Signup /></PublicRoute>} />
+        <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
+        <Route path="/reset-password/:token" element={<PublicRoute><ResetPassword /></PublicRoute>} />
 
         <Route
           element={

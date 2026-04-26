@@ -1,11 +1,10 @@
-import { useState, useContext } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import styled, { createGlobalStyle } from 'styled-components';
-import { Eye, EyeOff, Shield } from 'lucide-react';
+import { Shield } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { authAPI } from '../services/api';
-import { AuthContext } from '../context/AuthContext';
-import { isEmpty, isEmail } from '../utils/validators';
+import { isEmail, isEmpty } from '../utils/validators';
 
 const GlobalAuthStyle = createGlobalStyle`
   body { background: #0A0A0A; margin: 0; }
@@ -66,12 +65,13 @@ const Sub = styled.p`
   font-size: 13px;
   color: #52525B;
   margin: 0 0 28px;
+  line-height: 1.6;
 `;
 
 const Form = styled.form`
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
 `;
 
 const FieldWrap = styled.div`
@@ -88,17 +88,12 @@ const Label = styled.label`
   letter-spacing: 0.04em;
 `;
 
-const InputWrap = styled.div`
-  position: relative;
-`;
-
 const StyledInput = styled.input`
   width: 100%;
   background: #141414;
   border: 1px solid #222222;
   border-radius: 8px;
   padding: 11px 14px;
-  padding-right: ${({ $hasIcon }) => ($hasIcon ? '40px' : '14px')};
   color: #FAFAFA;
   font-size: 14px;
   font-family: inherit;
@@ -108,20 +103,6 @@ const StyledInput = styled.input`
   &::placeholder { color: #3F3F46; }
   &:focus { border-color: #DC2626; }
   &:disabled { opacity: 0.5; }
-`;
-
-const ToggleBtn = styled.button`
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: #52525B;
-  display: flex;
-  padding: 0;
-  &:hover { color: #A1A1AA; }
 `;
 
 const SubmitBtn = styled.button`
@@ -141,6 +122,17 @@ const SubmitBtn = styled.button`
   &:disabled { opacity: 0.5; cursor: not-allowed; }
 `;
 
+const SuccessBox = styled.div`
+  background: rgba(22,163,74,0.08);
+  border: 1px solid rgba(22,163,74,0.25);
+  border-radius: 10px;
+  padding: 16px;
+  font-size: 13px;
+  color: #4ADE80;
+  line-height: 1.6;
+  text-align: center;
+`;
+
 const Footer = styled.p`
   text-align: center;
   font-size: 13px;
@@ -155,41 +147,23 @@ const FooterLink = styled(Link)`
   &:hover { text-decoration: underline; }
 `;
 
-const ForgotLink = styled(Link)`
-  display: block;
-  text-align: right;
-  font-size: 12px;
-  color: #52525B;
-  text-decoration: none;
-  margin-top: -6px;
-  &:hover { color: #DC2626; }
-`;
-
-export default function Signin() {
+export default function ForgotPassword() {
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { dispatch } = useContext(AuthContext);
-  const navigate = useNavigate();
+  const [sent, setSent] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (isEmpty(email) || isEmpty(password)) return toast.error('Please fill in all fields');
+    if (isEmpty(email)) return toast.error('Please enter your email address');
     if (!isEmail(email)) return toast.error('Enter a valid email address');
 
     try {
       setLoading(true);
-      const { data } = await authAPI.login({ email, password });
-      if (data.success) {
-        const { user, accessToken } = data.data;
-        localStorage.setItem('user', JSON.stringify(user));
-        dispatch({ type: 'LOGIN_SUCCESS', payload: { user, accessToken } });
-        toast.success('Welcome back!');
-        navigate('/dashboard');
-      }
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Login failed. Please try again.');
+      await authAPI.forgotPassword(email.trim().toLowerCase());
+      setSent(true);
+    } catch {
+      // Always show success to prevent user enumeration
+      setSent(true);
     } finally {
       setLoading(false);
     }
@@ -204,49 +178,44 @@ export default function Signin() {
           <BrandName>SecureBank</BrandName>
         </LogoRow>
 
-        <Heading>Welcome back</Heading>
-        <Sub>Sign in to your account</Sub>
+        <Heading>Forgot password?</Heading>
+        <Sub>Enter the email address on your account and we'll send you a reset link.</Sub>
 
-        <Form onSubmit={handleSubmit}>
-          <FieldWrap>
-            <Label>Email</Label>
-            <StyledInput
-              type="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              disabled={loading}
-              autoComplete="email"
-            />
-          </FieldWrap>
-
-          <FieldWrap>
-            <Label>Password</Label>
-            <InputWrap>
+        {sent ? (
+          <>
+            <SuccessBox>
+              If an account exists with that email, you'll receive reset instructions shortly.
+              Check your inbox (and spam folder).
+            </SuccessBox>
+            <Footer>
+              <FooterLink to="/signin">Back to sign in</FooterLink>
+            </Footer>
+          </>
+        ) : (
+          <Form onSubmit={handleSubmit}>
+            <FieldWrap>
+              <Label>Email</Label>
               <StyledInput
-                $hasIcon
-                type={showPw ? 'text' : 'password'}
-                placeholder="Your password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 disabled={loading}
-                autoComplete="current-password"
+                autoComplete="email"
+                autoFocus
               />
-              <ToggleBtn type="button" onClick={() => setShowPw((v) => !v)}>
-                {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
-              </ToggleBtn>
-            </InputWrap>
-          </FieldWrap>
+            </FieldWrap>
+            <SubmitBtn type="submit" disabled={loading}>
+              {loading ? 'Sending…' : 'Send Reset Link'}
+            </SubmitBtn>
+          </Form>
+        )}
 
-          <ForgotLink to="/forgot-password">Forgot password?</ForgotLink>
-          <SubmitBtn type="submit" disabled={loading}>
-            {loading ? 'Signing in…' : 'Sign In'}
-          </SubmitBtn>
-        </Form>
-
-        <Footer>
-          Don't have an account? <FooterLink to="/signup">Sign up</FooterLink>
-        </Footer>
+        {!sent && (
+          <Footer>
+            Remember your password? <FooterLink to="/signin">Sign in</FooterLink>
+          </Footer>
+        )}
       </Card>
     </Page>
   );

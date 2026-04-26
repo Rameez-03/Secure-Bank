@@ -57,8 +57,10 @@ export const authAPI = {
   login: (credentials) => API.post("/auth/login", credentials),
   logout: () => API.post("/auth/logout"),
   getMe: () => API.get("/auth/me"),
-  // No body needed — backend reads httpOnly cookie
   refreshToken: () => API.post("/auth/refresh"),
+  changePassword: (data) => API.post("/auth/change-password", data),
+  forgotPassword: (email) => API.post("/auth/forgot-password", { email }),
+  resetPassword: (token, password) => API.post(`/auth/reset-password/${token}`, { password }),
 };
 
 // ==========================================

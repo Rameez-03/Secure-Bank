@@ -1,11 +1,10 @@
-import { useState, useContext } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import styled, { createGlobalStyle } from 'styled-components';
 import { Eye, EyeOff, Shield } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { authAPI } from '../services/api';
-import { AuthContext } from '../context/AuthContext';
-import { isEmpty, isEmail } from '../utils/validators';
+import { isEmpty, isStrongPassword } from '../utils/validators';
 
 const GlobalAuthStyle = createGlobalStyle`
   body { background: #0A0A0A; margin: 0; }
@@ -66,12 +65,13 @@ const Sub = styled.p`
   font-size: 13px;
   color: #52525B;
   margin: 0 0 28px;
+  line-height: 1.6;
 `;
 
 const Form = styled.form`
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
 `;
 
 const FieldWrap = styled.div`
@@ -97,8 +97,7 @@ const StyledInput = styled.input`
   background: #141414;
   border: 1px solid #222222;
   border-radius: 8px;
-  padding: 11px 14px;
-  padding-right: ${({ $hasIcon }) => ($hasIcon ? '40px' : '14px')};
+  padding: 11px 40px 11px 14px;
   color: #FAFAFA;
   font-size: 14px;
   font-family: inherit;
@@ -124,6 +123,15 @@ const ToggleBtn = styled.button`
   &:hover { color: #A1A1AA; }
 `;
 
+const HintList = styled.ul`
+  margin: 4px 0 0;
+  padding-left: 16px;
+  font-size: 11px;
+  color: #52525B;
+  line-height: 1.8;
+  list-style: disc;
+`;
+
 const SubmitBtn = styled.button`
   width: 100%;
   padding: 12px;
@@ -141,6 +149,17 @@ const SubmitBtn = styled.button`
   &:disabled { opacity: 0.5; cursor: not-allowed; }
 `;
 
+const ErrorBox = styled.div`
+  background: rgba(220,38,38,0.08);
+  border: 1px solid rgba(220,38,38,0.25);
+  border-radius: 10px;
+  padding: 16px;
+  font-size: 13px;
+  color: #FCA5A5;
+  line-height: 1.6;
+  text-align: center;
+`;
+
 const Footer = styled.p`
   text-align: center;
   font-size: 13px;
@@ -155,41 +174,36 @@ const FooterLink = styled(Link)`
   &:hover { text-decoration: underline; }
 `;
 
-const ForgotLink = styled(Link)`
-  display: block;
-  text-align: right;
-  font-size: 12px;
-  color: #52525B;
-  text-decoration: none;
-  margin-top: -6px;
-  &:hover { color: #DC2626; }
-`;
-
-export default function Signin() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+export default function ResetPassword() {
+  const { token } = useParams();
+  const navigate = useNavigate();
+  const [form, setForm] = useState({ password: '', confirm: '' });
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { dispatch } = useContext(AuthContext);
-  const navigate = useNavigate();
+  const [invalid, setInvalid] = useState(false);
+
+  const set = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (isEmpty(email) || isEmpty(password)) return toast.error('Please fill in all fields');
-    if (!isEmail(email)) return toast.error('Enter a valid email address');
+    if (isEmpty(form.password)) return toast.error('Please enter a new password');
+    if (!isStrongPassword(form.password)) {
+      return toast.error('Password must be 12+ characters with uppercase, lowercase, number, and special character');
+    }
+    if (form.password !== form.confirm) return toast.error('Passwords do not match');
 
     try {
       setLoading(true);
-      const { data } = await authAPI.login({ email, password });
-      if (data.success) {
-        const { user, accessToken } = data.data;
-        localStorage.setItem('user', JSON.stringify(user));
-        dispatch({ type: 'LOGIN_SUCCESS', payload: { user, accessToken } });
-        toast.success('Welcome back!');
-        navigate('/dashboard');
-      }
+      await authAPI.resetPassword(token, form.password);
+      toast.success('Password reset! Please sign in with your new password.');
+      navigate('/signin');
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Login failed. Please try again.');
+      const msg = err.response?.data?.message || '';
+      if (err.response?.status === 400 && msg.toLowerCase().includes('invalid')) {
+        setInvalid(true);
+      } else {
+        toast.error(msg || 'Reset failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -204,48 +218,63 @@ export default function Signin() {
           <BrandName>SecureBank</BrandName>
         </LogoRow>
 
-        <Heading>Welcome back</Heading>
-        <Sub>Sign in to your account</Sub>
+        <Heading>Set new password</Heading>
+        <Sub>Choose a strong password for your account.</Sub>
 
-        <Form onSubmit={handleSubmit}>
-          <FieldWrap>
-            <Label>Email</Label>
-            <StyledInput
-              type="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              disabled={loading}
-              autoComplete="email"
-            />
-          </FieldWrap>
+        {invalid ? (
+          <>
+            <ErrorBox>
+              This reset link is invalid or has expired. Reset links are only valid for 1 hour.
+            </ErrorBox>
+            <Footer>
+              <FooterLink to="/forgot-password">Request a new link</FooterLink>
+            </Footer>
+          </>
+        ) : (
+          <Form onSubmit={handleSubmit}>
+            <FieldWrap>
+              <Label>New Password</Label>
+              <InputWrap>
+                <StyledInput
+                  type={showPw ? 'text' : 'password'}
+                  placeholder="Min. 12 characters"
+                  value={form.password}
+                  onChange={set('password')}
+                  disabled={loading}
+                  autoComplete="new-password"
+                  autoFocus
+                />
+                <ToggleBtn type="button" onClick={() => setShowPw((v) => !v)}>
+                  {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                </ToggleBtn>
+              </InputWrap>
+              <HintList>
+                <li>At least 12 characters</li>
+                <li>Uppercase and lowercase letters</li>
+                <li>At least one number and one special character</li>
+              </HintList>
+            </FieldWrap>
 
-          <FieldWrap>
-            <Label>Password</Label>
-            <InputWrap>
+            <FieldWrap>
+              <Label>Confirm Password</Label>
               <StyledInput
-                $hasIcon
                 type={showPw ? 'text' : 'password'}
-                placeholder="Your password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Repeat new password"
+                value={form.confirm}
+                onChange={set('confirm')}
                 disabled={loading}
-                autoComplete="current-password"
+                autoComplete="new-password"
               />
-              <ToggleBtn type="button" onClick={() => setShowPw((v) => !v)}>
-                {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
-              </ToggleBtn>
-            </InputWrap>
-          </FieldWrap>
+            </FieldWrap>
 
-          <ForgotLink to="/forgot-password">Forgot password?</ForgotLink>
-          <SubmitBtn type="submit" disabled={loading}>
-            {loading ? 'Signing in…' : 'Sign In'}
-          </SubmitBtn>
-        </Form>
+            <SubmitBtn type="submit" disabled={loading}>
+              {loading ? 'Updating…' : 'Reset Password'}
+            </SubmitBtn>
+          </Form>
+        )}
 
         <Footer>
-          Don't have an account? <FooterLink to="/signup">Sign up</FooterLink>
+          <FooterLink to="/signin">Back to sign in</FooterLink>
         </Footer>
       </Card>
     </Page>
