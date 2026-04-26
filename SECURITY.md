@@ -142,23 +142,23 @@ All rate limiters use RFC 7807-style JSON 429 responses and emit `RateLimit-*` s
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    Browser (Frontend)                        │
+│                    Browser (Frontend)                       │
 │                                                             │
-│  ┌──────────────┐      ┌──────────────────────────────┐   │
-│  │ localStorage │      │  JavaScript Memory (React)   │   │
-│  │              │      │                              │   │
-│  │  user (name, │      │  accessToken (15 min)        │   │
-│  │  email, id)  │      │  → never written to disk     │   │
-│  │              │      │  → lost on page close        │   │
-│  └──────────────┘      └──────────────────────────────┘   │
+│  ┌──────────────┐      ┌──────────────────────────────┐     │
+│  │ localStorage │      │  JavaScript Memory (React)   │     │
+│  │              │      │                              │     │
+│  │  user (name, │      │  accessToken (15 min)        │     │
+│  │  email, id)  │      │  → never written to disk     │     │
+│  │              │      │  → lost on page close        │     │
+│  └──────────────┘      └──────────────────────────────┘     │
 │                                                             │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  httpOnly Cookie: rt (7 days)                        │  │
-│  │  → NOT readable by JavaScript                       │  │
-│  │  → Sent only to /api/auth/* paths                   │  │
-│  │  → Secure flag in production                        │  │
-│  │  → SameSite: strict (prod) / lax (dev)              │  │
-│  └──────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │  httpOnly Cookie: rt (7 days)                        │   │
+│  │  → NOT readable by JavaScript                        │   │
+│  │  → Sent only to /api/auth/* paths                    │   │
+│  │  → Secure flag in production                         │   │
+│  │  → SameSite: strict (prod) / lax (dev)               │   │
+│  └──────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
