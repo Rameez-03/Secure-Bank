@@ -5,7 +5,7 @@ import { Eye, EyeOff, Shield } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { authAPI } from '../services/api';
 import { AuthContext } from '../context/AuthContext';
-import { isEmpty, isEmail, isLength, isMatch } from '../utils/validators';
+import { isEmpty, isEmail, isLength, isMatch, isStrongPassword } from '../utils/validators';
 
 const GlobalAuthStyle = createGlobalStyle`
   body { background: #0A0A0A; margin: 0; }
@@ -183,18 +183,17 @@ export default function Signup() {
     if (isEmpty(form.name) || isEmpty(form.email) || isEmpty(form.password))
       return toast.error('Please fill in all fields');
     if (!isEmail(form.email)) return toast.error('Enter a valid email address');
-    if (isLength(form.password, 6)) return toast.error('Password must be at least 6 characters');
+    if (isLength(form.password, 12)) return toast.error('Password must be at least 12 characters');
+    if (!isStrongPassword(form.password)) return toast.error('Password must include uppercase, lowercase, a number, and a special character');
     if (!isMatch(form.password, form.confirm)) return toast.error('Passwords do not match');
 
     try {
       setLoading(true);
       const { data } = await authAPI.register({ name: form.name, email: form.email, password: form.password });
       if (data.success) {
-        const { user, accessToken, refreshToken } = data.data;
-        localStorage.setItem('accessToken', accessToken);
-        localStorage.setItem('refreshToken', refreshToken);
+        const { user, accessToken } = data.data;
         localStorage.setItem('user', JSON.stringify(user));
-        dispatch({ type: 'REGISTER_SUCCESS', payload: { user, accessToken, refreshToken } });
+        dispatch({ type: 'REGISTER_SUCCESS', payload: { user, accessToken } });
         toast.success('Account created! Welcome.');
         navigate('/dashboard');
       }
@@ -249,7 +248,7 @@ export default function Signup() {
                 <StyledInput
                   $hasIcon
                   type={showPw ? 'text' : 'password'}
-                  placeholder="Min. 6 characters"
+                  placeholder="Min. 12 characters"
                   value={form.password}
                   onChange={set('password')}
                   disabled={loading}

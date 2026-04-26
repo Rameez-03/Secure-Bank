@@ -172,11 +172,9 @@ export default function Signin() {
       setLoading(true);
       const { data } = await authAPI.login({ email, password });
       if (data.success) {
-        const { user, accessToken, refreshToken } = data.data;
-        localStorage.setItem('accessToken', accessToken);
-        localStorage.setItem('refreshToken', refreshToken);
+        const { user, accessToken } = data.data;
         localStorage.setItem('user', JSON.stringify(user));
-        dispatch({ type: 'LOGIN_SUCCESS', payload: { user, accessToken, refreshToken } });
+        dispatch({ type: 'LOGIN_SUCCESS', payload: { user, accessToken } });
         toast.success('Welcome back!');
         navigate('/dashboard');
       }

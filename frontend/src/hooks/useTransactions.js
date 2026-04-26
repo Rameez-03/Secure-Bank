@@ -45,7 +45,7 @@ export const useTransactions = () => {
   const updateTransaction = async (id, txData) => {
     const { data } = await transactionAPI.update(id, txData);
     setTransactions((prev) =>
-      prev.map((tx) => (tx._id === id ? data.data : tx))
+      prev.map((tx) => (tx._id === id ? data.data.transaction : tx))
     );
     toast.success('Transaction updated');
     return data.data;

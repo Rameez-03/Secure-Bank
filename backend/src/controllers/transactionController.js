@@ -1,145 +1,199 @@
+import mongoose from "mongoose";
 import Transaction from "../models/transactionModel.js";
 import User from "../models/userModel.js";
 
-// Create a transaction
+const AMOUNT_MIN = -1_000_000_000;
+const AMOUNT_MAX =  1_000_000_000;
+const DESC_MAX   = 500;
+const CAT_MAX    = 100;
+const DATE_MIN   = new Date("1970-01-01").getTime();
+const DATE_MAX   = new Date("2100-12-31").getTime();
+
+const parseDate = (value) => {
+  if (!value) return null;
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return null;
+  if (d.getTime() < DATE_MIN || d.getTime() > DATE_MAX) return null;
+  return d;
+};
+
+const validateAmount = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "Amount must be a finite number";
+  if (n < AMOUNT_MIN || n > AMOUNT_MAX) return `Amount must be between ${AMOUNT_MIN} and ${AMOUNT_MAX}`;
+  return null;
+};
+
+// Create a manual transaction
 export const addTransaction = async (req, res) => {
   try {
     const { date, description, amount, category } = req.body;
 
-    // Validation
-    if (!description || !amount || !category) {
-      return res.status(400).json({
-        success: false,
-        message: "Please provide description, amount, and category"
-      });
+    if (!description || amount === undefined || amount === null || !category) {
+      return res.status(400).json({ success: false, message: "Description, amount, and category are required" });
     }
 
-    // Create manual transaction with authenticated user's ID
+    const amountErr = validateAmount(amount);
+    if (amountErr) return res.status(400).json({ success: false, message: amountErr });
+
+    if (typeof description !== "string" || description.trim().length === 0) {
+      return res.status(400).json({ success: false, message: "Description must be a non-empty string" });
+    }
+    if (description.trim().length > DESC_MAX) {
+      return res.status(400).json({ success: false, message: `Description cannot exceed ${DESC_MAX} characters` });
+    }
+
+    if (typeof category !== "string" || category.trim().length === 0) {
+      return res.status(400).json({ success: false, message: "Category must be a non-empty string" });
+    }
+    if (category.trim().length > CAT_MAX) {
+      return res.status(400).json({ success: false, message: `Category cannot exceed ${CAT_MAX} characters` });
+    }
+
+    let parsedDate = new Date();
+    if (date !== undefined) {
+      parsedDate = parseDate(date);
+      if (!parsedDate) {
+        return res.status(400).json({ success: false, message: "Invalid date — must be between 1970 and 2100" });
+      }
+    }
+
     const newTransaction = await Transaction.create({
       userId: req.user.userId,
-      date: date || new Date(),
-      description,
-      amount,
-      category,
-      isManual: true  // Mark as manually created
+      date: parsedDate,
+      description: description.trim(),
+      amount: Number(amount),
+      category: category.trim(),
+      isManual: true,
     });
 
-    // Add transaction to user's transactions array
-    await User.findByIdAndUpdate(
-      req.user.userId,
-      { $push: { transactions: newTransaction._id } }
-    );
+    await User.findByIdAndUpdate(req.user.userId, { $push: { transactions: newTransaction._id } });
 
     res.status(201).json({
       success: true,
       message: "Transaction created successfully",
-      data: { transaction: newTransaction }
+      data: { transaction: newTransaction },
     });
-
   } catch (error) {
     console.error("Error in addTransaction:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error creating transaction"
-    });
+    res.status(500).json({ success: false, message: "Server error creating transaction" });
   }
 };
 
-// Get all transactions for logged-in user
+// Get all transactions for logged-in user — paginated (default 500, max 500)
 export const getTransactions = async (req, res) => {
   try {
-    const transactions = await Transaction.find({ userId: req.user.userId })
-      .sort({ date: -1 });
+    const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 500));
+    const page  = Math.max(1, parseInt(req.query.page) || 1);
+    const skip  = (page - 1) * limit;
+
+    const [transactions, total] = await Promise.all([
+      Transaction.find({ userId: req.user.userId })
+        .sort({ date: -1 })
+        .skip(skip)
+        .limit(limit),
+      Transaction.countDocuments({ userId: req.user.userId }),
+    ]);
 
     res.status(200).json({
       success: true,
       count: transactions.length,
-      data: { transactions }
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+      data: { transactions },
     });
-
   } catch (error) {
     console.error("Error in getTransactions:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error fetching transactions"
-    });
+    res.status(500).json({ success: false, message: "Server error fetching transactions" });
   }
 };
 
 // Get single transaction by ID
 export const getTransaction = async (req, res) => {
   try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(404).json({ success: false, message: "Transaction not found" });
+    }
+
     const transaction = await Transaction.findById(req.params.id);
 
     if (!transaction) {
-      return res.status(404).json({
-        success: false,
-        message: "Transaction not found"
-      });
+      return res.status(404).json({ success: false, message: "Transaction not found" });
     }
 
-    // Check if transaction belongs to logged-in user
     if (transaction.userId.toString() !== req.user.userId) {
-      return res.status(403).json({
-        success: false,
-        message: "Not authorized to access this transaction"
-      });
+      return res.status(403).json({ success: false, message: "Not authorized to access this transaction" });
     }
 
-    res.status(200).json({
-      success: true,
-      data: { transaction }
-    });
-
+    res.status(200).json({ success: true, data: { transaction } });
   } catch (error) {
     console.error("Error in getTransaction:", error);
-    
-    if (error.kind === 'ObjectId') {
-      return res.status(404).json({
-        success: false,
-        message: "Transaction not found"
-      });
-    }
-
-    res.status(500).json({
-      success: false,
-      message: "Server error fetching transaction"
-    });
+    res.status(500).json({ success: false, message: "Server error fetching transaction" });
   }
 };
 
-// Update a transaction
+// Update a manual transaction — Plaid-synced transactions are read-only
 export const updateTransaction = async (req, res) => {
   try {
-    const { date, description, amount, category } = req.body;
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(404).json({ success: false, message: "Transaction not found" });
+    }
 
-    // Find transaction first
-    let transaction = await Transaction.findById(req.params.id);
+    const transaction = await Transaction.findById(req.params.id);
 
     if (!transaction) {
-      return res.status(404).json({
-        success: false,
-        message: "Transaction not found"
-      });
+      return res.status(404).json({ success: false, message: "Transaction not found" });
     }
 
-    // Check ownership
     if (transaction.userId.toString() !== req.user.userId) {
-      return res.status(403).json({
-        success: false,
-        message: "Not authorized to update this transaction"
-      });
+      return res.status(403).json({ success: false, message: "Not authorized to update this transaction" });
     }
 
-    // Build update object
-    const updateFields = {};
-    if (date) updateFields.date = date;
-    if (description) updateFields.description = description;
-    if (amount) updateFields.amount = amount;
-    if (category) updateFields.category = category;
+    if (!transaction.isManual) {
+      return res.status(403).json({ success: false, message: "Bank-imported transactions cannot be edited" });
+    }
 
-    // Update transaction
-    transaction = await Transaction.findByIdAndUpdate(
+    const { date, description, amount, category } = req.body;
+    const updateFields = {};
+
+    if (amount !== undefined) {
+      const amountErr = validateAmount(amount);
+      if (amountErr) return res.status(400).json({ success: false, message: amountErr });
+      updateFields.amount = Number(amount);
+    }
+
+    if (description !== undefined) {
+      if (typeof description !== "string" || description.trim().length === 0) {
+        return res.status(400).json({ success: false, message: "Description must be a non-empty string" });
+      }
+      if (description.trim().length > DESC_MAX) {
+        return res.status(400).json({ success: false, message: `Description cannot exceed ${DESC_MAX} characters` });
+      }
+      updateFields.description = description.trim();
+    }
+
+    if (category !== undefined) {
+      if (typeof category !== "string" || category.trim().length === 0) {
+        return res.status(400).json({ success: false, message: "Category must be a non-empty string" });
+      }
+      if (category.trim().length > CAT_MAX) {
+        return res.status(400).json({ success: false, message: `Category cannot exceed ${CAT_MAX} characters` });
+      }
+      updateFields.category = category.trim();
+    }
+
+    if (date !== undefined) {
+      const parsedDate = parseDate(date);
+      if (!parsedDate) {
+        return res.status(400).json({ success: false, message: "Invalid date — must be between 1970 and 2100" });
+      }
+      updateFields.date = parsedDate;
+    }
+
+    if (Object.keys(updateFields).length === 0) {
+      return res.status(400).json({ success: false, message: "No valid fields to update" });
+    }
+
+    const updated = await Transaction.findByIdAndUpdate(
       req.params.id,
       { $set: updateFields },
       { new: true, runValidators: true }
@@ -148,65 +202,37 @@ export const updateTransaction = async (req, res) => {
     res.status(200).json({
       success: true,
       message: "Transaction updated successfully",
-      data: { transaction }
+      data: { transaction: updated },
     });
-
   } catch (error) {
     console.error("Error in updateTransaction:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error updating transaction"
-    });
+    res.status(500).json({ success: false, message: "Server error updating transaction" });
   }
 };
 
 // Delete a transaction
 export const deleteTransaction = async (req, res) => {
   try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(404).json({ success: false, message: "Transaction not found" });
+    }
+
     const transaction = await Transaction.findById(req.params.id);
 
     if (!transaction) {
-      return res.status(404).json({
-        success: false,
-        message: "Transaction not found"
-      });
+      return res.status(404).json({ success: false, message: "Transaction not found" });
     }
 
-    // Check ownership
     if (transaction.userId.toString() !== req.user.userId) {
-      return res.status(403).json({
-        success: false,
-        message: "Not authorized to delete this transaction"
-      });
+      return res.status(403).json({ success: false, message: "Not authorized to delete this transaction" });
     }
 
-    // Delete transaction
     await Transaction.findByIdAndDelete(req.params.id);
+    await User.findByIdAndUpdate(req.user.userId, { $pull: { transactions: req.params.id } });
 
-    // Remove from user's transactions array
-    await User.findByIdAndUpdate(
-      req.user.userId,
-      { $pull: { transactions: req.params.id } }
-    );
-
-    res.status(200).json({
-      success: true,
-      message: "Transaction deleted successfully"
-    });
-
+    res.status(200).json({ success: true, message: "Transaction deleted successfully" });
   } catch (error) {
     console.error("Error in deleteTransaction:", error);
-    
-    if (error.kind === 'ObjectId') {
-      return res.status(404).json({
-        success: false,
-        message: "Transaction not found"
-      });
-    }
-
-    res.status(500).json({
-      success: false,
-      message: "Server error deleting transaction"
-    });
+    res.status(500).json({ success: false, message: "Server error deleting transaction" });
   }
 };

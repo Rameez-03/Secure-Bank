@@ -2,7 +2,7 @@ import { useState, useContext } from 'react';
 import styled from 'styled-components';
 import { Check, Eye, EyeOff } from 'lucide-react';
 import { AuthContext } from '../context/AuthContext';
-import { userAPI, authAPI, plaidAPI } from '../services/api';
+import { userAPI, authAPI, plaidAPI, setAccessToken } from '../services/api';
 import { toast } from 'react-toastify';
 import Button from '../components/common/Button';
 import Input from '../components/common/Input';
@@ -111,6 +111,7 @@ export default function Settings() {
 
   const [syncing, setSyncing] = useState(false);
   const [unlinking, setUnlinking] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   const initials = user?.name
     ? user.name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
@@ -150,7 +151,7 @@ export default function Settings() {
   const handlePasswordSave = async (e) => {
     e.preventDefault();
     if (!passwords.current || !passwords.newPass) return toast.error('Fill in all password fields');
-    if (passwords.newPass.length < 6) return toast.error('Password must be at least 6 characters');
+    if (passwords.newPass.length < 12) return toast.error('Password must be at least 12 characters');
     if (passwords.newPass !== passwords.confirm) return toast.error('Passwords do not match');
     try {
       setSavingPw(true);
@@ -171,6 +172,24 @@ export default function Settings() {
       toast.error('Sync failed — make sure your bank is connected');
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    const confirmed = window.confirm(
+      'This will permanently delete your account and all your data. This cannot be undone.\n\nType OK to confirm.'
+    );
+    if (!confirmed) return;
+    try {
+      setDeletingAccount(true);
+      await userAPI.deleteAccount(user.id);
+      setAccessToken(null);
+      localStorage.removeItem('user');
+      dispatch({ type: 'LOGOUT' });
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to delete account');
+    } finally {
+      setDeletingAccount(false);
     }
   };
 
@@ -305,6 +324,22 @@ export default function Settings() {
           <div>
             <Button size="sm" variant="danger" onClick={handleUnlink} disabled={unlinking}>
               {unlinking ? 'Disconnecting…' : 'Disconnect Bank Account'}
+            </Button>
+          </div>
+        </FormGrid>
+      </Section>
+      {/* Danger Zone */}
+      <Section style={{ borderColor: 'rgba(220,38,38,0.3)' }}>
+        <SectionTitle style={{ color: '#DC2626', borderBottomColor: 'rgba(220,38,38,0.2)' }}>
+          Danger Zone
+        </SectionTitle>
+        <FormGrid>
+          <div style={{ fontSize: 13, color: '#71717A', lineHeight: 1.6 }}>
+            Permanently deletes your account, all transactions, and disconnects your bank. This action cannot be undone.
+          </div>
+          <div>
+            <Button size="sm" variant="danger" onClick={handleDeleteAccount} disabled={deletingAccount}>
+              {deletingAccount ? 'Deleting…' : 'Delete Account'}
             </Button>
           </div>
         </FormGrid>

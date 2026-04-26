@@ -10,7 +10,7 @@ export const getHealthScore = async (req, res) => {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    const transactions = await Transaction.find({ userId });
+    const transactions = await Transaction.find({ userId }).sort({ date: -1 }).limit(1000);
 
     // No transactions = no meaningful data to score against
     if (transactions.length === 0) {

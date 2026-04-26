@@ -53,6 +53,7 @@ const Page = styled.div`
   color: #FAFAFA;
   font-family: 'Inter', -apple-system, sans-serif;
   overflow-x: hidden;
+  scroll-behavior: smooth;
 `;
 
 const Glow = styled.div`
@@ -765,10 +766,10 @@ export default function Landing() {
           <LogoText>SecureBank</LogoText>
         </NavLogo>
         <NavCenter>
-          <NavLink>Features</NavLink>
-          <NavLink>Security</NavLink>
-          <NavLink>Pricing</NavLink>
-          <NavLink>About</NavLink>
+          <NavLink href="#features">Features</NavLink>
+          <NavLink href="#security">Security</NavLink>
+          <NavLink href="#pricing">Pricing</NavLink>
+          <NavLink href="#features">About</NavLink>
         </NavCenter>
         <NavRight>
           <NavSignIn to="/signin">Login</NavSignIn>
@@ -812,7 +813,7 @@ export default function Landing() {
       </Hero>
 
       {/* ── Dashboard Mockup ── */}
-      <MockupWrap>
+      <MockupWrap id="security">
         <MockupFrame>
           {/* Browser chrome */}
           <MockupChrome>
@@ -907,7 +908,7 @@ export default function Landing() {
       </MockupWrap>
 
       {/* ── Features ── */}
-      <Features>
+      <Features id="features">
         <SectionEyebrow>Why SecureBank</SectionEyebrow>
         <SectionH2>Everything you need to own your money</SectionH2>
 
@@ -958,7 +959,7 @@ export default function Landing() {
       </Features>
 
       {/* ── CTA Banner ── */}
-      <CTABanner>
+      <CTABanner id="pricing">
         <BannerH2>Start taking control today</BannerH2>
         <BannerSub>
           Join SecureBank and get a single, secure view of your finances

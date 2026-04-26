@@ -145,7 +145,7 @@ function GaugeArc({ score, color }) {
         <path
           d={ARC}
           fill="none"
-          stroke={color || '#DC2626'}
+          stroke={color || '#b60c0c'}
           strokeWidth="9"
           strokeLinecap="butt"
           strokeDasharray={`${p * CIRCUMFERENCE} ${CIRCUMFERENCE}`}

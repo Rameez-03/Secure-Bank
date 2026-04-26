@@ -1,49 +1,33 @@
 import jwt from "jsonwebtoken";
 
-// Protect routes - verify JWT token
-export const protect = async (req, res, next) => {
+export const protect = (req, res, next) => {
   try {
-    let token;
-
-    // Check for token in Authorization header
-    if (
-      req.headers.authorization &&
-      req.headers.authorization.startsWith("Bearer")
-    ) {
-      token = req.headers.authorization.split(" ")[1];
+    if (!process.env.JWT_SECRET) {
+      return res.status(500).json({ success: false, message: "Server misconfiguration" });
     }
 
-    // No token found
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ success: false, message: "Not authorized — no token provided" });
+    }
+
+    const token = authHeader.split(" ")[1];
     if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: "Not authorized - No token provided"
-      });
+      return res.status(401).json({ success: false, message: "Not authorized — malformed token" });
     }
 
-    // Verify token
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET || "your-secret-key"
-    );
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ["HS256"] });
 
-    // Add user info to request
-    req.user = { userId: decoded.userId };
+    if (!decoded.userId) {
+      return res.status(401).json({ success: false, message: "Not authorized — invalid token payload" });
+    }
 
+    req.user = { userId: decoded.userId.toString() };
     next();
   } catch (error) {
-    console.error("Auth middleware error:", error);
-
     if (error.name === "TokenExpiredError") {
-      return res.status(401).json({
-        success: false,
-        message: "Token expired - Please refresh your token"
-      });
+      return res.status(401).json({ success: false, message: "Token expired — please refresh" });
     }
-
-    return res.status(401).json({
-      success: false,
-      message: "Not authorized - Invalid token"
-    });
+    return res.status(401).json({ success: false, message: "Not authorized — invalid token" });
   }
 };

@@ -1,128 +1,181 @@
 import express from "express";
+import { Configuration, PlaidApi, PlaidEnvironments } from "plaid";
 import { protect } from "../middleware/authMiddleware.js";
 import User from "../models/userModel.js";
 import { getHealthScore } from "../controllers/healthScoreController.js";
+import { safeDecrypt } from "../utils/encrypt.js";
 
 const router = express.Router();
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const BUDGET_MAX = 10_000_000;
+
+const COOKIE_CLEAR_OPTIONS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
+  path: "/api/auth",
+};
 
 // Financial Health Score
 router.get("/health-score", protect, getHealthScore);
 
-// Get user by ID (protected)
+// Get user by ID
 router.get("/:id", protect, async (req, res) => {
   try {
-    const user = await User.findById(req.params.id)
-      .select("-password")
-      .populate("transactions");
+    const user = await User.findById(req.params.id).select("-password");
 
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found"
-      });
+      return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    // Only allow users to get their own data
     if (user._id.toString() !== req.user.userId) {
-      return res.status(403).json({
-        success: false,
-        message: "Not authorized to access this user's data"
-      });
+      return res.status(403).json({ success: false, message: "Not authorized to access this user's data" });
     }
 
-    res.status(200).json({
-      success: true,
-      data: { user }
-    });
-
+    res.status(200).json({ success: true, data: { user } });
   } catch (error) {
     console.error("Error in getUser:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error"
-    });
+    res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
 // Update user budget
 router.put("/:id/budget", protect, async (req, res) => {
   try {
-    const { budget } = req.body;
-
-    // Only allow users to update their own budget
     if (req.params.id !== req.user.userId) {
-      return res.status(403).json({
-        success: false,
-        message: "Not authorized to update this user's budget"
-      });
+      return res.status(403).json({ success: false, message: "Not authorized to update this user's budget" });
+    }
+
+    const { budget } = req.body;
+    const parsed = Number(budget);
+
+    if (budget === undefined || budget === null || budget === "") {
+      return res.status(400).json({ success: false, message: "Budget is required" });
+    }
+    if (!Number.isFinite(parsed)) {
+      return res.status(400).json({ success: false, message: "Budget must be a number" });
+    }
+    if (parsed < 0) {
+      return res.status(400).json({ success: false, message: "Budget cannot be negative" });
+    }
+    if (parsed > BUDGET_MAX) {
+      return res.status(400).json({ success: false, message: `Budget cannot exceed ${BUDGET_MAX}` });
     }
 
     const user = await User.findByIdAndUpdate(
       req.params.id,
-      { budget },
-      { new: true }
+      { budget: parsed },
+      { new: true, runValidators: true }
     ).select("-password");
 
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found"
-      });
+      return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    res.status(200).json({
-      success: true,
-      message: "Budget updated successfully",
-      data: { user }
-    });
-
+    res.status(200).json({ success: true, message: "Budget updated successfully", data: { user } });
   } catch (error) {
     console.error("Error updating budget:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error"
-    });
+    res.status(500).json({ success: false, message: "Server error" });
   }
 });
 
 // Update user profile
 router.put("/:id", protect, async (req, res) => {
   try {
+    if (req.params.id !== req.user.userId) {
+      return res.status(403).json({ success: false, message: "Not authorized to update this user's profile" });
+    }
+
     const { name, email } = req.body;
 
-    // Only allow users to update their own profile
-    if (req.params.id !== req.user.userId) {
-      return res.status(403).json({
-        success: false,
-        message: "Not authorized to update this user's profile"
-      });
+    if (name !== undefined) {
+      const trimmed = name.trim();
+      if (trimmed.length === 0 || trimmed.length > 100) {
+        return res.status(400).json({ success: false, message: "Name must be between 1 and 100 characters" });
+      }
     }
 
-    const user = await User.findByIdAndUpdate(
-      req.params.id,
-      { name, email },
-      { new: true }
-    ).select("-password");
+    if (email !== undefined) {
+      const trimmedEmail = email.trim().toLowerCase();
+      if (!EMAIL_REGEX.test(trimmedEmail)) {
+        return res.status(400).json({ success: false, message: "Enter a valid email address" });
+      }
+    }
+
+    const updates = {};
+    if (name !== undefined) updates.name = name.trim();
+    if (email !== undefined) updates.email = email.trim().toLowerCase();
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ success: false, message: "No valid fields to update" });
+    }
+
+    let user;
+    try {
+      user = await User.findByIdAndUpdate(
+        req.params.id,
+        updates,
+        { new: true, runValidators: true }
+      ).select("-password");
+    } catch (dbErr) {
+      if (dbErr.code === 11000) {
+        return res.status(400).json({ success: false, message: "An account with this email already exists" });
+      }
+      throw dbErr;
+    }
 
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found"
-      });
+      return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    res.status(200).json({
-      success: true,
-      message: "Profile updated successfully",
-      data: { user }
-    });
-
+    res.status(200).json({ success: true, message: "Profile updated successfully", data: { user } });
   } catch (error) {
     console.error("Error updating profile:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error"
-    });
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// Delete account — permanently removes user, all transactions, and revokes Plaid access
+router.delete("/:id", protect, async (req, res) => {
+  try {
+    if (req.params.id !== req.user.userId) {
+      return res.status(403).json({ success: false, message: "Not authorized to delete this account" });
+    }
+
+    const user = await User.findById(req.params.id).select("+accessToken");
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    // Best-effort Plaid token revocation — don't fail if Plaid is unreachable
+    if (user.accessToken) {
+      try {
+        const plaidClient = new PlaidApi(new Configuration({
+          basePath: PlaidEnvironments[process.env.PLAID_ENV || "sandbox"],
+          baseOptions: {
+            headers: {
+              "PLAID-CLIENT-ID": process.env.PLAID_CLIENT_ID,
+              "PLAID-SECRET": process.env.PLAID_SECRET,
+            },
+          },
+        }));
+        await plaidClient.itemRemove({ access_token: safeDecrypt(user.accessToken) });
+      } catch (e) {
+        console.error("Plaid revocation on account deletion (non-fatal):", e.message);
+      }
+    }
+
+    const Transaction = (await import("../models/transactionModel.js")).default;
+    await Transaction.deleteMany({ userId: req.params.id });
+    await User.findByIdAndDelete(req.params.id);
+
+    res.clearCookie("rt", COOKIE_CLEAR_OPTIONS);
+
+    res.status(200).json({ success: true, message: "Account deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting account:", error);
+    res.status(500).json({ success: false, message: "Server error" });
   }
 });
 

@@ -27,9 +27,13 @@ const Sidebar = styled.aside`
 const LogoSection = styled.div`
   padding: 20px 20px 18px;
   border-bottom: 1px solid #1A1A1A;
+`;
+
+const LogoLink = styled(Link)`
   display: flex;
   align-items: center;
   gap: 10px;
+  text-decoration: none;
 `;
 
 const LogoIcon = styled.div`
@@ -193,10 +197,12 @@ export default function SidebarComponent() {
   return (
     <Sidebar>
       <LogoSection>
-        <LogoIcon>
-          <Shield size={18} color="#FAFAFA" strokeWidth={2.5} />
-        </LogoIcon>
-        <LogoText>SecureBank</LogoText>
+        <LogoLink to="/dashboard">
+          <LogoIcon>
+            <Shield size={18} color="#FAFAFA" strokeWidth={2.5} />
+          </LogoIcon>
+          <LogoText>SecureBank</LogoText>
+        </LogoLink>
       </LogoSection>
 
       <NavSection>

@@ -2,92 +2,102 @@ import User from "../models/userModel.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 
-// Generate JWT tokens
-const generateTokens = (userId) => {
-  const accessToken = jwt.sign(
-    { userId },
-    process.env.JWT_SECRET || "your-secret-key",
-    { expiresIn: "15m" }
-  );
+const BCRYPT_ROUNDS = 12;
+const PASSWORD_MIN = 12;
+// Pre-computed once at startup — valid 60-char bcrypt hash required for timing-safe compare
+const DUMMY_HASH = bcrypt.hashSync("__timing_dummy__", BCRYPT_ROUNDS);
+// Requires at least: 1 uppercase, 1 lowercase, 1 digit, 1 special character
+const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]).{12,}$/;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const NAME_MAX = 100;
 
-  const refreshToken = jwt.sign(
-    { userId },
-    process.env.JWT_REFRESH_SECRET || "your-refresh-secret",
-    { expiresIn: "7d" }
-  );
-
-  return { accessToken, refreshToken };
+const COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
+  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in ms
+  path: "/api/auth",
 };
+
+const getJwtSecret = () => {
+  if (!process.env.JWT_SECRET) throw new Error("JWT_SECRET not configured");
+  return process.env.JWT_SECRET;
+};
+
+const getJwtRefreshSecret = () => {
+  if (!process.env.JWT_REFRESH_SECRET) throw new Error("JWT_REFRESH_SECRET not configured");
+  return process.env.JWT_REFRESH_SECRET;
+};
+
+const generateAccessToken = (userId) =>
+  jwt.sign({ userId }, getJwtSecret(), { expiresIn: "15m", algorithm: "HS256" });
+
+const generateRefreshToken = (userId) =>
+  jwt.sign({ userId }, getJwtRefreshSecret(), { expiresIn: "7d", algorithm: "HS256" });
 
 // Register new user
 export const register = async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
-    // Validation
     if (!name || !email || !password) {
-      return res.status(400).json({ 
+      return res.status(400).json({ success: false, message: "Name, email, and password are required" });
+    }
+
+    const trimmedName = name.trim();
+    const trimmedEmail = email.trim().toLowerCase();
+
+    if (trimmedName.length === 0 || trimmedName.length > NAME_MAX) {
+      return res.status(400).json({ success: false, message: `Name must be between 1 and ${NAME_MAX} characters` });
+    }
+
+    if (!EMAIL_REGEX.test(trimmedEmail)) {
+      return res.status(400).json({ success: false, message: "Enter a valid email address" });
+    }
+
+    if (!PASSWORD_REGEX.test(password)) {
+      return res.status(400).json({
         success: false,
-        message: "Please provide name, email and password" 
+        message: `Password must be at least ${PASSWORD_MIN} characters and include an uppercase letter, lowercase letter, number, and special character`,
       });
     }
 
-    // Check if user already exists
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    const existingUser = await User.findOne({ email: trimmedEmail });
     if (existingUser) {
-      return res.status(400).json({ 
-        success: false,
-        message: "User already exists with this email" 
-      });
+      return res.status(400).json({ success: false, message: "An account with this email already exists" });
     }
 
-    // Validate password length
-    if (password.length < 6) {
-      return res.status(400).json({ 
-        success: false,
-        message: "Password must be at least 6 characters" 
-      });
-    }
+    const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
-    // Hash password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    // Create user
     const user = await User.create({
-      name,
-      email: email.toLowerCase(),
+      name: trimmedName,
+      email: trimmedEmail,
       password: hashedPassword,
       budget: 0,
-      streaks: 0,
-      transactions: []
+      transactions: [],
     });
 
-    // Generate tokens
-    const { accessToken, refreshToken } = generateTokens(user._id);
+    const accessToken = generateAccessToken(user._id);
+    const refreshToken = generateRefreshToken(user._id);
 
-    res.status(201).json({
+    res.cookie("rt", refreshToken, COOKIE_OPTIONS);
+
+    return res.status(201).json({
       success: true,
-      message: "User registered successfully",
+      message: "Account created successfully",
       data: {
         user: {
           id: user._id,
           name: user.name,
           email: user.email,
           budget: user.budget,
-          streaks: user.streaks
         },
         accessToken,
-        refreshToken
-      }
+      },
     });
-
   } catch (error) {
     console.error("Error in register:", error);
-    res.status(500).json({ 
-      success: false,
-      message: "Server error during registration" 
-    });
+    return res.status(500).json({ success: false, message: "Server error during registration" });
   }
 };
 
@@ -96,36 +106,32 @@ export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Validation
     if (!email || !password) {
-      return res.status(400).json({ 
-        success: false,
-        message: "Please provide email and password" 
-      });
+      return res.status(400).json({ success: false, message: "Email and password are required" });
     }
 
-    // Find user
-    const user = await User.findOne({ email: email.toLowerCase() });
-    if (!user) {
-      return res.status(401).json({ 
-        success: false,
-        message: "Invalid credentials" 
-      });
+    const trimmedEmail = email.trim().toLowerCase();
+
+    if (!EMAIL_REGEX.test(trimmedEmail)) {
+      return res.status(400).json({ success: false, message: "Enter a valid email address" });
     }
 
-    // Check password
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      return res.status(401).json({ 
-        success: false,
-        message: "Invalid credentials" 
-      });
+    const user = await User.findOne({ email: trimmedEmail });
+    // Constant-time path: always run bcrypt.compare to prevent user-enumeration via timing
+    const isValid = user
+      ? await bcrypt.compare(password, user.password)
+      : await bcrypt.compare(password, DUMMY_HASH).then(() => false);
+
+    if (!user || !isValid) {
+      return res.status(401).json({ success: false, message: "Invalid credentials" });
     }
 
-    // Generate tokens
-    const { accessToken, refreshToken } = generateTokens(user._id);
+    const accessToken = generateAccessToken(user._id);
+    const refreshToken = generateRefreshToken(user._id);
 
-    res.status(200).json({
+    res.cookie("rt", refreshToken, COOKIE_OPTIONS);
+
+    return res.status(200).json({
       success: true,
       message: "Login successful",
       data: {
@@ -134,100 +140,76 @@ export const login = async (req, res) => {
           name: user.name,
           email: user.email,
           budget: user.budget,
-          streaks: user.streaks
         },
         accessToken,
-        refreshToken
-      }
+      },
     });
-
   } catch (error) {
     console.error("Error in login:", error);
-    res.status(500).json({ 
-      success: false,
-      message: "Server error during login" 
-    });
+    return res.status(500).json({ success: false, message: "Server error during login" });
   }
 };
 
-// Refresh access token
+// Refresh access token — reads refresh token from httpOnly cookie
 export const refreshToken = async (req, res) => {
   try {
-    const { refreshToken } = req.body;
+    const token = req.cookies?.rt;
 
-    if (!refreshToken) {
-      return res.status(400).json({ 
-        success: false,
-        message: "Refresh token required" 
-      });
+    if (!token) {
+      return res.status(401).json({ success: false, message: "No refresh token provided" });
     }
 
-    // Verify refresh token
-    const decoded = jwt.verify(
-      refreshToken,
-      process.env.JWT_REFRESH_SECRET || "your-refresh-secret"
-    );
+    let decoded;
+    try {
+      decoded = jwt.verify(token, getJwtRefreshSecret(), { algorithms: ["HS256"] });
+    } catch {
+      res.clearCookie("rt", COOKIE_OPTIONS);
+      return res.status(401).json({ success: false, message: "Invalid or expired refresh token" });
+    }
 
-    // Generate new access token
-    const accessToken = jwt.sign(
-      { userId: decoded.userId },
-      process.env.JWT_SECRET || "your-secret-key",
-      { expiresIn: "15m" }
-    );
+    // Verify user still exists
+    const user = await User.findById(decoded.userId).select("_id name email budget");
+    if (!user) {
+      res.clearCookie("rt", COOKIE_OPTIONS);
+      return res.status(401).json({ success: false, message: "User no longer exists" });
+    }
 
-    res.status(200).json({
+    const newAccessToken = generateAccessToken(user._id);
+
+    return res.status(200).json({
       success: true,
-      data: { accessToken }
+      data: {
+        accessToken: newAccessToken,
+        user: { id: user._id, name: user.name, email: user.email, budget: user.budget },
+      },
     });
-
   } catch (error) {
     console.error("Error in refreshToken:", error);
-    res.status(401).json({ 
-      success: false,
-      message: "Invalid or expired refresh token" 
-    });
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
-// Get current user (requires auth)
+// Get current user
 export const getMe = async (req, res) => {
   try {
-    // req.user is set by auth middleware
-    const user = await User.findById(req.user.userId).select("-password");
-
+    const user = await User.findById(req.user.userId).select("-password -accessToken -plaidCursor");
     if (!user) {
-      return res.status(404).json({ 
-        success: false,
-        message: "User not found" 
-      });
+      return res.status(404).json({ success: false, message: "User not found" });
     }
-
-    res.status(200).json({
-      success: true,
-      data: { user }
-    });
-
+    return res.status(200).json({ success: true, data: { user } });
   } catch (error) {
     console.error("Error in getMe:", error);
-    res.status(500).json({ 
-      success: false,
-      message: "Server error" 
-    });
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
-// Logout (optional - mainly for clearing client-side tokens)
+// Logout — clear refresh token cookie
 export const logout = async (req, res) => {
   try {
-    res.status(200).json({
-      success: true,
-      message: "Logged out successfully"
-    });
+    res.clearCookie("rt", COOKIE_OPTIONS);
+    return res.status(200).json({ success: true, message: "Logged out successfully" });
   } catch (error) {
     console.error("Error in logout:", error);
-    res.status(500).json({ 
-      success: false,
-      message: "Server error" 
-    });
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 };

@@ -3,48 +3,110 @@ import express from "express";
 import mongoose from "mongoose";
 import cors from "cors";
 import dotenv from "dotenv";
+import helmet from "helmet";
+import mongoSanitize from "express-mongo-sanitize";
+import hpp from "hpp";
+import cookieParser from "cookie-parser";
 
-// Virgin Media (and some other ISPs) block Node.js c-ares DNS on Windows.
-// Force Google / Cloudflare resolvers so MongoDB Atlas SRV lookups work.
+// Force Google / Cloudflare DNS resolvers — Virgin Media blocks Node c-ares on Windows
 dns.setServers(["8.8.8.8", "1.1.1.1"]);
+
 import authRoutes from "./routes/authRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import transactionRoutes from "./routes/transactionRoutes.js";
 import plaidRoutes from "./routes/plaidRoutes.js";
+import { globalLimiter } from "./middleware/rateLimiter.js";
 
-// Load environment variables
 dotenv.config();
+
+// Fail hard if critical secrets are missing at startup
+const REQUIRED_ENV = ["JWT_SECRET", "JWT_REFRESH_SECRET", "MONGODB_URI"];
+const WARN_ENV = ["PLAID_CLIENT_ID", "PLAID_SECRET", "ENCRYPTION_KEY"];
+for (const key of REQUIRED_ENV) {
+  if (!process.env[key]) {
+    console.error(`FATAL: Missing required environment variable: ${key}`);
+    process.exit(1);
+  }
+}
+for (const key of WARN_ENV) {
+  if (!process.env[key]) {
+    console.warn(`WARNING: Missing recommended environment variable: ${key} — related features will fail at runtime`);
+  }
+}
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const isProd = process.env.NODE_ENV === "production";
 
 // ==========================================
-// MIDDLEWARE
+// SECURITY MIDDLEWARE
 // ==========================================
 
-// CORS
-const allowedOrigins =
-  process.env.NODE_ENV === "production"
-    ? [process.env.FRONTEND_URL]
-    : ["http://localhost:3000", "http://localhost:3001", "http://localhost:3002"];
+// Trust reverse proxy only in production (prevents IP spoofing in local/dev environments)
+if (isProd) app.set("trust proxy", 1);
+
+// HTTP security headers
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:", "https:"],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+        upgradeInsecureRequests: isProd ? [] : null,
+      },
+    },
+    crossOriginEmbedderPolicy: false,
+    hsts: isProd
+      ? { maxAge: 31536000, includeSubDomains: true, preload: true }
+      : false,
+  })
+);
+
+// CORS — strict allowed origins only
+const allowedOrigins = isProd
+  ? [process.env.FRONTEND_URL].filter(Boolean)
+  : ["http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "http://localhost:5173"];
 
 app.use(
   cors({
     origin: (origin, cb) => {
+      // Allow server-to-server requests with no origin
       if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
       cb(new Error(`CORS blocked: ${origin}`));
     },
     credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
-// Body parser
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Cookie parser (required for httpOnly refresh token)
+app.use(cookieParser());
 
-// Request logger
-app.use((req, res, next) => {
-  console.log(`${req.method} ${req.path}`);
+// Body parsers with size limits to prevent payload attacks
+app.use(express.json({ limit: "10kb" }));
+app.use(express.urlencoded({ extended: true, limit: "10kb" }));
+
+// Sanitize MongoDB operators in req.body / req.query / req.params
+app.use(mongoSanitize());
+
+// Prevent HTTP Parameter Pollution
+app.use(hpp());
+
+// Global rate limiter
+app.use(globalLimiter);
+
+// Request logger (method + path only — no sensitive data)
+app.use((req, _res, next) => {
+  if (process.env.NODE_ENV !== "test") {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  }
   next();
 });
 
@@ -52,38 +114,30 @@ app.use((req, res, next) => {
 // ROUTES
 // ==========================================
 
-// Health check
-app.get("/health", (req, res) => {
+app.get("/health", (_req, res) => {
   res.status(200).json({
     status: "success",
     message: "Server is running",
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   });
 });
 
-// API routes
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/transactions", transactionRoutes);
 app.use("/api/plaid", plaidRoutes);
-app.use("/api/transactions", transactionRoutes);
 
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    message: "Route not found",
-    path: req.path
-  });
+// 404
+app.use((_req, res) => {
+  res.status(404).json({ success: false, message: "Route not found" });
 });
 
-// Error handler
-app.use((err, req, res, next) => {
+// Global error handler — never leak stack traces to client
+app.use((err, _req, res, _next) => {
   console.error("Server error:", err);
-  res.status(err.statusCode || 500).json({
-    success: false,
-    message: err.message || "Internal server error"
-  });
+  const status = err.statusCode || 500;
+  const message = isProd && status === 500 ? "Internal server error" : err.message || "Internal server error";
+  res.status(status).json({ success: false, message });
 });
 
 // ==========================================
@@ -92,16 +146,15 @@ app.use((err, req, res, next) => {
 
 const startServer = async () => {
   try {
-    // Connect to MongoDB
-    await mongoose.connect(process.env.MONGODB_URI || "mongodb://localhost:27017/secure-banking");
+    await mongoose.connect(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 5000,
+    });
     console.log("✅ MongoDB connected successfully");
 
-    // Start Express server
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📍 Environment: ${process.env.NODE_ENV || "development"}`);
       console.log(`🔗 Health check: http://localhost:${PORT}/health`);
-      console.log(`🔐 Auth endpoints: http://localhost:${PORT}/api/auth`);
     });
   } catch (error) {
     console.error("Failed to start server:", error);
@@ -109,19 +162,16 @@ const startServer = async () => {
   }
 };
 
-// Handle uncaught exceptions
 process.on("uncaughtException", (error) => {
   console.error("Uncaught Exception:", error);
   process.exit(1);
 });
 
-// Handle unhandled promise rejections
 process.on("unhandledRejection", (error) => {
   console.error("Unhandled Rejection:", error);
   process.exit(1);
 });
 
-// Start the server
 startServer();
 
 export default app;
