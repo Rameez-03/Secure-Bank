@@ -15,6 +15,7 @@ A full-stack personal finance management application built with security and reg
 - [Features](#features)
 - [Security](#security)
 - [GDPR & Compliance](#gdpr--compliance)
+- [Testing](#testing)
 - [Docker Deployment](#docker-deployment)
 - [Local Development](#local-development)
 - [Project Structure](#project-structure)
@@ -193,6 +194,28 @@ UK GDPR (DPA 2018) compliance was assessed and implemented across the applicatio
 - **Cookie notice** — httpOnly refresh token disclosed as strictly necessary (PECR Regulation 6 exemption)
 - **Health score disclosure** — methodology explained on Analytics page and in Privacy Policy; explicitly stated as non-Article 22 automated decision
 - **`lastLoginAt` tracking** — enables inactive account management per the Data Retention Policy
+
+---
+
+## Testing
+
+![CI](https://github.com/Rameez-03/Secure-Bank/actions/workflows/ci.yml/badge.svg)
+
+38 tests across 3 suites, run automatically on every push via **GitHub Actions**.
+
+```bash
+cd backend
+npm install
+npm test
+```
+
+| Suite | Coverage |
+|-------|----------|
+| `encrypt.test.js` | AES-256-GCM encrypt / decrypt / isEncrypted / safeDecrypt — roundtrip, tamper detection, random IV verification |
+| `auth.test.js` | Registration validation (7 cases), duplicate email, successful register, login validation, wrong credentials, account lockout (423), protected route guards |
+| `transactions.test.js` | Auth guards (401) on all 5 transaction routes, invalid token, wrong-secret token, expired token, health check |
+
+Tests use `jest.unstable_mockModule` to isolate mongoose and the database models — no running database required.
 
 ---
 
