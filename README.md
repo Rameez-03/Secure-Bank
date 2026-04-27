@@ -157,12 +157,12 @@ UK GDPR (DPA 2018) compliance was assessed and implemented across the applicatio
 
 | Document | Contents |
 |----------|----------|
-| [`COMPLIANCE.md`](COMPLIANCE.md) | Full compliance audit — UK GDPR article-by-article, OWASP Top 10, ROPA (7 processing activities), Gap Register (C-01 to C-13), remediation plan |
+| [`COMPLIANCE.md`](docs/COMPLIANCE.md) | Full compliance audit — UK GDPR article-by-article, OWASP Top 10, ROPA (7 processing activities), Gap Register (C-01 to C-13), remediation plan |
 | [`SECURITY.md`](SECURITY.md) | Security audit — STRIDE threat model, risk scoring matrix (5×5 L×I), residual risk register (R-01 to R-09) |
-| [`DPIA.md`](DPIA.md) | Article 35 Data Protection Impact Assessment — 8 risks identified and mitigated, processing approved |
-| [`DATA_RETENTION_POLICY.md`](DATA_RETENTION_POLICY.md) | Retention schedule for all data categories, inactive account deletion process, legal holds clause |
-| [`BREACH_REGISTER.md`](BREACH_REGISTER.md) | Article 33(5) breach register — 72-hour response procedure, risk classification guide, ICO notification checklist |
-| [`DPA_RECORDS.md`](DPA_RECORDS.md) | Article 28 processor register — Plaid Inc. and SMTP provider records |
+| [`DPIA.md`](docs/DPIA.md) | Article 35 Data Protection Impact Assessment — 8 risks identified and mitigated, processing approved |
+| [`DATA_RETENTION_POLICY.md`](docs/DATA_RETENTION_POLICY.md) | Retention schedule for all data categories, inactive account deletion process, legal holds clause |
+| [`BREACH_REGISTER.md`](docs/BREACH_REGISTER.md) | Article 33(5) breach register — 72-hour response procedure, risk classification guide, ICO notification checklist |
+| [`DPA_RECORDS.md`](docs/DPA_RECORDS.md) | Article 28 processor register — Plaid Inc. and SMTP provider records |
 
 ### Implemented Data Subject Rights
 
@@ -308,9 +308,9 @@ secure-bank/
 | File | Description |
 |------|-------------|
 | [`SECURITY.md`](SECURITY.md) | Full security audit — STRIDE, OWASP Top 10, risk register |
-| [`COMPLIANCE.md`](COMPLIANCE.md) | UK GDPR compliance audit — ROPA, gap register, remediation plan |
-| [`DPIA.md`](DPIA.md) | Data Protection Impact Assessment (ICO template) |
-| [`DATA_RETENTION_POLICY.md`](DATA_RETENTION_POLICY.md) | Data retention schedule and deletion procedures |
-| [`BREACH_REGISTER.md`](BREACH_REGISTER.md) | Personal data breach register and incident response procedure |
-| [`DPA_RECORDS.md`](DPA_RECORDS.md) | Data Processing Agreement records for third-party processors |
+| [`COMPLIANCE.md`](docs/COMPLIANCE.md) | UK GDPR compliance audit — ROPA, gap register, remediation plan |
+| [`DPIA.md`](docs/DPIA.md) | Data Protection Impact Assessment (ICO template) |
+| [`DATA_RETENTION_POLICY.md`](docs/DATA_RETENTION_POLICY.md) | Data retention schedule and deletion procedures |
+| [`BREACH_REGISTER.md`](docs/BREACH_REGISTER.md) | Personal data breach register and incident response procedure |
+| [`DPA_RECORDS.md`](docs/DPA_RECORDS.md) | Data Processing Agreement records for third-party processors |
 | [`backend/.env.example`](backend/.env.example) | Environment variable reference |
