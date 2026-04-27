@@ -54,6 +54,18 @@ The project goes beyond typical portfolio apps by incorporating:
 ### Docker — All Three Containers Running
 ![Docker](docs/screenshots/docker.png)
 
+### AWS Deployment — EC2 Instance Running
+![AWS Instance](docs/screenshots/aws-instance.png)
+
+### AWS Deployment — Docker Build on EC2
+![AWS Build](docs/screenshots/aws-build.png)
+
+### AWS Deployment — Live Application
+![Deployed](docs/screenshots/deployed.png)
+
+### AWS Deployment — CloudWatch Monitoring
+![Monitor Stats](docs/screenshots/monitor-stats.png)
+
 ---
 
 ## Tech Stack
@@ -233,6 +245,39 @@ docker compose down -v
 - **`try_files $uri /index.html`** in nginx config ensures React Router works on direct navigation and page refresh.
 - **Healthchecks + `condition: service_healthy`** — Compose waits for mongo to be ready before starting the backend, and for the backend before starting nginx. Prevents startup race conditions.
 - **Named volume `mongo-data`** — data persists across `docker compose down`. Only `docker compose down -v` destroys it.
+
+---
+
+## AWS Deployment
+
+The application was deployed to **AWS EC2** (t3.micro, Europe/London region) running the full Docker Compose stack on an Ubuntu 24.04 server.
+
+### Infrastructure
+
+| Component | Detail |
+|-----------|--------|
+| **Cloud Provider** | Amazon Web Services |
+| **Instance** | EC2 t3.micro — Ubuntu 24.04 LTS |
+| **Region** | eu-west-2 (Europe, London) |
+| **Deployment** | Docker Compose (same stack as local) |
+| **Database** | MongoDB Atlas (external managed cluster) |
+| **Networking** | Security group: port 80 open; port 22 SSH only |
+
+### Deployment Steps
+
+```bash
+# On the EC2 instance
+git clone https://github.com/Rameez-03/Secure-Bank.git
+cd Secure-Bank
+
+# Create environment file
+nano backend/.env
+
+# Build and start all containers
+docker compose up -d --build
+```
+
+The public IP is set as `CORS_ORIGIN` and `FRONTEND_URL` in the Compose environment overrides — no code changes required between local and production.
 
 ---
 
