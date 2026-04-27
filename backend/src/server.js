@@ -16,6 +16,7 @@ import userRoutes from "./routes/userRoutes.js";
 import transactionRoutes from "./routes/transactionRoutes.js";
 import plaidRoutes from "./routes/plaidRoutes.js";
 import { globalLimiter } from "./middleware/rateLimiter.js";
+import logger from "./utils/logger.js";
 
 dotenv.config();
 
@@ -24,13 +25,13 @@ const REQUIRED_ENV = ["JWT_SECRET", "JWT_REFRESH_SECRET", "MONGODB_URI"];
 const WARN_ENV = ["PLAID_CLIENT_ID", "PLAID_SECRET", "ENCRYPTION_KEY"];
 for (const key of REQUIRED_ENV) {
   if (!process.env[key]) {
-    console.error(`FATAL: Missing required environment variable: ${key}`);
+    logger.error("startup.missing_required_env", { key });
     process.exit(1);
   }
 }
 for (const key of WARN_ENV) {
   if (!process.env[key]) {
-    console.warn(`WARNING: Missing recommended environment variable: ${key} — related features will fail at runtime`);
+    logger.warn("startup.missing_recommended_env", { key });
   }
 }
 
@@ -105,7 +106,7 @@ app.use(globalLimiter);
 // Request logger (method + path only — no sensitive data)
 app.use((req, _res, next) => {
   if (process.env.NODE_ENV !== "test") {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+    logger.info("http.request", { method: req.method, path: req.path, ip: req.ip });
   }
   next();
 });
@@ -134,7 +135,7 @@ app.use((_req, res) => {
 
 // Global error handler — never leak stack traces to client
 app.use((err, _req, res, _next) => {
-  console.error("Server error:", err);
+  logger.error("server.unhandled_error", { error: err.message, stack: err.stack, status: err.statusCode });
   const status = err.statusCode || 500;
   const message = isProd && status === 500 ? "Internal server error" : err.message || "Internal server error";
   res.status(status).json({ success: false, message });
@@ -149,26 +150,24 @@ const startServer = async () => {
     await mongoose.connect(process.env.MONGODB_URI, {
       serverSelectionTimeoutMS: 5000,
     });
-    console.log("✅ MongoDB connected successfully");
+    logger.info("startup.db_connected");
 
     app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`📍 Environment: ${process.env.NODE_ENV || "development"}`);
-      console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+      logger.info("startup.server_ready", { port: PORT, env: process.env.NODE_ENV || "development" });
     });
   } catch (error) {
-    console.error("Failed to start server:", error);
+    logger.error("startup.failed", { error: error.message, stack: error.stack });
     process.exit(1);
   }
 };
 
 process.on("uncaughtException", (error) => {
-  console.error("Uncaught Exception:", error);
+  logger.error("process.uncaught_exception", { error: error.message, stack: error.stack });
   process.exit(1);
 });
 
 process.on("unhandledRejection", (error) => {
-  console.error("Unhandled Rejection:", error);
+  logger.error("process.unhandled_rejection", { error: error?.message, stack: error?.stack });
   process.exit(1);
 });
 

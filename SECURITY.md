@@ -145,8 +145,8 @@ Threats are identified using the STRIDE methodology applied to each asset catego
 
 | Threat | Targeted Asset | Mitigation | Status |
 |--------|---------------|------------|--------|
-| User denies initiating a transaction; no server record to dispute the claim | Audit trail | No structured audit log exists | ⚠️ Open — R-03 |
-| Privileged or destructive action performed with no attribution record | Audit trail | `console.log` only — not persistent, not structured, not queryable | ⚠️ Open — R-03 |
+| User denies initiating a transaction; no server record to dispute the claim | Audit trail | Winston structured JSON logger (`logger.js`) records auth events with userId + IP | ✅ Mitigated — R-03 |
+| Privileged or destructive action performed with no attribution record | Audit trail | Winston replaces all `console.*` in authController — login, logout, register, password reset all emit structured events | ✅ Mitigated — R-03 |
 
 ### 4.4 Information Disclosure — Data Exposure
 
@@ -170,7 +170,7 @@ Threats are identified using the STRIDE methodology applied to each asset catego
 | Oversized request body to exhaust memory or crash JSON parser | Server memory | `express.json({ limit: '10kb' })` | ✅ Mitigated |
 | Repeated Plaid sync calls to exhaust third-party API quota | Plaid API quota | `plaidLimiter` (100 req / 15 min / IP) on sync endpoint | ✅ Mitigated |
 | Unbounded transaction query loading entire user dataset into memory | Server memory | Pagination enforced; maximum 500 records per request | ✅ Mitigated |
-| Repeated failed logins to trigger future account lockout abuse | User availability | No account lockout — brute force constrained by rate limiter only | ⚠️ Open — R-02 |
+| Repeated failed logins to trigger future account lockout abuse | User availability | `failedLoginAttempts` + `lockUntil` on User model; 15-min lock after 5 failures; counter reset on success | ✅ Mitigated — R-02 |
 
 ### 4.6 Elevation of Privilege
 
@@ -542,8 +542,8 @@ All unresolved findings from across all fix passes, consolidated into a single a
 | ID | Item | Category | L | I | Score | Risk | Resolution Path |
 |----|------|----------|---|---|-------|------|----------------|
 | R-01 | JWT access token not invalidated on logout — 15-min window where a stolen token remains valid | Authentication | 3 | 4 | 12 | **Medium** | Redis denylist keyed on `jti`; check on every authenticated request |
-| R-02 | No account lockout after repeated failed logins — brute force constrained by rate limiter only | Authentication | 3 | 3 | 9 | **Medium** | Add `failedLoginAttempts` + `lockUntil` fields to User model; 15-min lock after 5 failures |
-| R-03 | No structured audit log — auth events not persisted; repudiation cannot be disproved | Repudiation | 2 | 4 | 8 | **Medium** | Replace `console.log` with Winston; persist login, logout, password-change, and deletion events |
+| R-02 | ~~No account lockout after repeated failed logins~~ **Closed** — `failedLoginAttempts` + `lockUntil`; 15-min lock after 5 failures | Authentication | 1 | 3 | 3 | **Low** | ✅ Implemented |
+| R-03 | ~~No structured audit log~~ **Closed** — Winston JSON logger; auth events (login/logout/register/password reset) emit structured events with userId + IP | Repudiation | 1 | 4 | 4 | **Low** | ✅ Implemented |
 | R-04 | No HTTPS enforcement — traffic unencrypted in transit if deployed without TLS termination | Transport | 2 | 4 | 8 | **Medium** | Enforce via nginx `return 301 https://` or add HTTPS redirect middleware |
 | R-05 | No email verification on registration — anyone can register with an unowned email address | Identity | 3 | 2 | 6 | **Medium** | `ENABLE_EMAIL_VERIFICATION` flag exists in `.env` — needs implementation |
 | R-06 | CSRF tokens not implemented — `SameSite: strict` mitigates most vectors but not all cross-origin flows | Session | 2 | 3 | 6 | **Medium** | Implement synchronised-token pattern alongside cookie auth |

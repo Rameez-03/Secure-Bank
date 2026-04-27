@@ -323,6 +323,18 @@ export default function Analytics() {
           </TopList>
         )}
       </Card>
+
+      <div style={{ marginTop: 16, padding: '14px 18px', background: '#141414', border: '1px solid #222', borderRadius: 12 }}>
+        <p style={{ fontSize: 11, fontWeight: 600, color: '#52525B', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 6px' }}>
+          About the Financial Health Score
+        </p>
+        <p style={{ fontSize: 12, color: '#3F3F46', lineHeight: 1.7, margin: 0 }}>
+          Your health score is calculated automatically from your transaction history using four factors: spending
+          consistency relative to your monthly budget, transaction frequency and regularity, the ratio of income to
+          expenditure, and spending trends over the last 90 days. This score is for personal insight only — it is not
+          a credit score, financial advice, or any form of legally significant automated decision (Article 22 UK GDPR).
+        </p>
+      </div>
     </div>
   );
 }

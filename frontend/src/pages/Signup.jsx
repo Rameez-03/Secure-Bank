@@ -169,8 +169,32 @@ const TermsNote = styled.p`
   line-height: 1.5;
 `;
 
+const CheckRow = styled.label`
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 12px;
+  color: #71717A;
+  line-height: 1.5;
+  cursor: pointer;
+`;
+
+const CheckBox = styled.input`
+  margin-top: 2px;
+  accent-color: #DC2626;
+  flex-shrink: 0;
+  cursor: pointer;
+`;
+
+const PrivacyLink = styled(Link)`
+  color: #DC2626;
+  text-decoration: none;
+  &:hover { text-decoration: underline; }
+`;
+
 export default function Signup() {
   const [form, setForm] = useState({ name: '', email: '', password: '', confirm: '' });
+  const [ageConfirmed, setAgeConfirmed] = useState(false);
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const { dispatch } = useContext(AuthContext);
@@ -186,6 +210,7 @@ export default function Signup() {
     if (isLength(form.password, 12)) return toast.error('Password must be at least 12 characters');
     if (!isStrongPassword(form.password)) return toast.error('Password must include uppercase, lowercase, a number, and a special character');
     if (!isMatch(form.password, form.confirm)) return toast.error('Passwords do not match');
+    if (!ageConfirmed) return toast.error('You must confirm you are 13 or older to create an account');
 
     try {
       setLoading(true);
@@ -273,12 +298,20 @@ export default function Signup() {
             </FieldWrap>
           </Grid2>
 
-          <SubmitBtn type="submit" disabled={loading}>
+          <CheckRow>
+            <CheckBox
+              type="checkbox"
+              checked={ageConfirmed}
+              onChange={(e) => setAgeConfirmed(e.target.checked)}
+              disabled={loading}
+            />
+            I confirm I am 13 years of age or older and I have read and agree to the{' '}
+            <PrivacyLink to="/privacy-policy" target="_blank">Privacy Policy</PrivacyLink>.
+          </CheckRow>
+
+          <SubmitBtn type="submit" disabled={loading || !ageConfirmed}>
             {loading ? 'Creating account…' : 'Create Account'}
           </SubmitBtn>
-          <TermsNote>
-            By signing up you agree to our Terms of Service and Privacy Policy.
-          </TermsNote>
         </Form>
 
         <Footer>

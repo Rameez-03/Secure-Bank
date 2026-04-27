@@ -31,6 +31,13 @@ const UserSchema = new mongoose.Schema(
     resetPasswordExpires: { type: Date, select: false },
     transactions: [{ type: mongoose.Schema.Types.ObjectId, ref: "Transaction" }],
     budget: { type: Number, default: 0, min: [0, "Budget cannot be negative"] },
+    // GDPR Article 18 — right to restriction of processing
+    isRestricted: { type: Boolean, default: false },
+    // Retention policy — track last login for inactive account management
+    lastLoginAt: { type: Date, default: null },
+    // Brute-force protection — never returned in default queries
+    failedLoginAttempts: { type: Number, default: 0, select: false },
+    lockUntil: { type: Date, default: null, select: false },
   },
   { timestamps: true }
 );

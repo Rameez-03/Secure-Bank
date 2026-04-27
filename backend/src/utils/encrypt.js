@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import logger from "./logger.js";
 
 const ALGORITHM = "aes-256-gcm";
 const IV_BYTES = 16;
@@ -65,6 +66,6 @@ export const isEncrypted = (value) => {
 export const safeDecrypt = (value) => {
   if (isEncrypted(value)) return decrypt(value);
   // Legacy plaintext token — still functional, but should be re-encrypted
-  console.warn("[SECURITY] Plaintext Plaid token detected — re-link bank to encrypt");
+  logger.warn("security.plaintext_token_detected", { hint: "Re-link bank account to migrate to encrypted storage" });
   return value;
 };

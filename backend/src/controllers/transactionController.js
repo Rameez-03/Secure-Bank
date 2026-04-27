@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import Transaction from "../models/transactionModel.js";
 import User from "../models/userModel.js";
+import logger from "../utils/logger.js";
 
 const AMOUNT_MIN = -1_000_000_000;
 const AMOUNT_MAX =  1_000_000_000;
@@ -24,9 +25,20 @@ const validateAmount = (value) => {
   return null;
 };
 
+const RESTRICTION_MSG = "Processing is currently restricted on your account. Lift the restriction in Settings to make changes.";
+
+const checkRestricted = async (userId) => {
+  const user = await User.findById(userId).select("isRestricted");
+  return user?.isRestricted === true;
+};
+
 // Create a manual transaction
 export const addTransaction = async (req, res) => {
   try {
+    if (await checkRestricted(req.user.userId)) {
+      return res.status(403).json({ success: false, message: RESTRICTION_MSG });
+    }
+
     const { date, description, amount, category } = req.body;
 
     if (!description || amount === undefined || amount === null || !category) {
@@ -75,7 +87,7 @@ export const addTransaction = async (req, res) => {
       data: { transaction: newTransaction },
     });
   } catch (error) {
-    console.error("Error in addTransaction:", error);
+    logger.error("addTransaction.error", { error: error.message, stack: error.stack });
     res.status(500).json({ success: false, message: "Server error creating transaction" });
   }
 };
@@ -102,7 +114,7 @@ export const getTransactions = async (req, res) => {
       data: { transactions },
     });
   } catch (error) {
-    console.error("Error in getTransactions:", error);
+    logger.error("getTransactions.error", { error: error.message, stack: error.stack });
     res.status(500).json({ success: false, message: "Server error fetching transactions" });
   }
 };
@@ -126,7 +138,7 @@ export const getTransaction = async (req, res) => {
 
     res.status(200).json({ success: true, data: { transaction } });
   } catch (error) {
-    console.error("Error in getTransaction:", error);
+    logger.error("getTransaction.error", { error: error.message, stack: error.stack });
     res.status(500).json({ success: false, message: "Server error fetching transaction" });
   }
 };
@@ -136,6 +148,10 @@ export const updateTransaction = async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) {
       return res.status(404).json({ success: false, message: "Transaction not found" });
+    }
+
+    if (await checkRestricted(req.user.userId)) {
+      return res.status(403).json({ success: false, message: RESTRICTION_MSG });
     }
 
     const transaction = await Transaction.findById(req.params.id);
@@ -205,7 +221,7 @@ export const updateTransaction = async (req, res) => {
       data: { transaction: updated },
     });
   } catch (error) {
-    console.error("Error in updateTransaction:", error);
+    logger.error("updateTransaction.error", { error: error.message, stack: error.stack });
     res.status(500).json({ success: false, message: "Server error updating transaction" });
   }
 };
@@ -215,6 +231,10 @@ export const deleteTransaction = async (req, res) => {
   try {
     if (!mongoose.isValidObjectId(req.params.id)) {
       return res.status(404).json({ success: false, message: "Transaction not found" });
+    }
+
+    if (await checkRestricted(req.user.userId)) {
+      return res.status(403).json({ success: false, message: RESTRICTION_MSG });
     }
 
     const transaction = await Transaction.findById(req.params.id);
@@ -232,7 +252,7 @@ export const deleteTransaction = async (req, res) => {
 
     res.status(200).json({ success: true, message: "Transaction deleted successfully" });
   } catch (error) {
-    console.error("Error in deleteTransaction:", error);
+    logger.error("deleteTransaction.error", { error: error.message, stack: error.stack });
     res.status(500).json({ success: false, message: "Server error deleting transaction" });
   }
 };

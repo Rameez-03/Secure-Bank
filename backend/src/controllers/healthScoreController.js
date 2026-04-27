@@ -1,5 +1,6 @@
 import Transaction from "../models/transactionModel.js";
 import User from "../models/userModel.js";
+import logger from "../utils/logger.js";
 
 export const getHealthScore = async (req, res) => {
   try {
@@ -208,7 +209,7 @@ export const getHealthScore = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Error in getHealthScore:", error);
+    logger.error("getHealthScore.error", { error: error.message, stack: error.stack });
     res.status(500).json({ success: false, message: "Server error" });
   }
 };

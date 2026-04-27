@@ -1,6 +1,7 @@
 import { Configuration, PlaidApi, PlaidEnvironments, Products, CountryCode } from 'plaid';
 import User from '../models/userModel.js';
 import { encrypt, safeDecrypt } from '../utils/encrypt.js';
+import logger from '../utils/logger.js';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -20,7 +21,7 @@ const getPlaidClient = () => {
 // Sanitises error responses — never expose Plaid internals to clients in production
 const plaidError = (error) => {
   const data = error.response?.data;
-  console.error('[Plaid]', data || error.message || error);
+  logger.error('plaid.api_error', { error: data || error.message });
   return isProd ? undefined : (data || error.message);
 };
 
@@ -255,6 +256,13 @@ export const syncTransactions = async (req, res) => {
     const plaidClient = getPlaidClient();
     const user = await User.findById(req.user.userId).select('+accessToken');
 
+    if (user?.isRestricted) {
+      return res.status(403).json({
+        success: false,
+        message: 'Processing is currently restricted on your account. Lift the restriction in Settings to sync transactions.',
+      });
+    }
+
     if (!user || !user.accessToken) {
       return res.status(400).json({
         success: false,
@@ -349,7 +357,7 @@ export const syncTransactions = async (req, res) => {
       }
     }
 
-    console.log(`Sync complete: +${savedCount} added, ~${modifiedCount} modified, -${removedCount} removed`);
+    logger.info('plaid.sync_complete', { userId: req.user.userId, added: savedCount, modified: modifiedCount, removed: removedCount });
 
     res.status(200).json({
       success: true,
@@ -377,7 +385,7 @@ export const removePlaidLink = async (req, res) => {
         const plainToken = safeDecrypt(user.accessToken);
         await plaidClient.itemRemove({ access_token: plainToken });
       } catch (plaidError) {
-        console.error('Plaid itemRemove error (continuing):', plaidError?.response?.data || plaidError.message);
+        logger.warn('plaid.item_remove_failed', { error: plaidError?.response?.data || plaidError.message });
       }
     }
 

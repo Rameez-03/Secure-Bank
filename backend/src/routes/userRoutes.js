@@ -4,6 +4,7 @@ import { protect } from "../middleware/authMiddleware.js";
 import User from "../models/userModel.js";
 import { getHealthScore } from "../controllers/healthScoreController.js";
 import { safeDecrypt } from "../utils/encrypt.js";
+import logger from "../utils/logger.js";
 
 const router = express.Router();
 
@@ -35,7 +36,7 @@ router.get("/:id", protect, async (req, res) => {
 
     res.status(200).json({ success: true, data: { user } });
   } catch (error) {
-    console.error("Error in getUser:", error);
+    logger.error("getUser.error", { error: error.message, stack: error.stack });
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
@@ -75,7 +76,7 @@ router.put("/:id/budget", protect, async (req, res) => {
 
     res.status(200).json({ success: true, message: "Budget updated successfully", data: { user } });
   } catch (error) {
-    console.error("Error updating budget:", error);
+    logger.error("updateBudget.error", { error: error.message, stack: error.stack });
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
@@ -131,7 +132,79 @@ router.put("/:id", protect, async (req, res) => {
 
     res.status(200).json({ success: true, message: "Profile updated successfully", data: { user } });
   } catch (error) {
-    console.error("Error updating profile:", error);
+    logger.error("updateProfile.error", { error: error.message, stack: error.stack });
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// Export personal data — Article 15 (access) + Article 20 (portability)
+router.get("/:id/export", protect, async (req, res) => {
+  try {
+    if (req.params.id !== req.user.userId) {
+      return res.status(403).json({ success: false, message: "Not authorized to export this account's data" });
+    }
+
+    const user = await User.findById(req.params.id).select("-password");
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+    const Transaction = (await import("../models/transactionModel.js")).default;
+    const transactions = await Transaction.find({ userId: req.params.id }).sort({ date: -1 });
+
+    const exportPayload = {
+      exportedAt: new Date().toISOString(),
+      exportFormat: "SecureBank Data Export v1",
+      profile: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        budget: user.budget,
+        createdAt: user.createdAt,
+        lastLoginAt: user.lastLoginAt,
+      },
+      transactions: transactions.map((tx) => ({
+        id: tx._id,
+        date: tx.date,
+        description: tx.description,
+        amount: tx.amount,
+        category: tx.category,
+        pending: tx.pending,
+        isManual: tx.isManual,
+        createdAt: tx.createdAt,
+      })),
+    };
+
+    res.setHeader("Content-Disposition", `attachment; filename="securebank-export-${Date.now()}.json"`);
+    res.setHeader("Content-Type", "application/json");
+    return res.status(200).json(exportPayload);
+  } catch (error) {
+    logger.error("exportData.error", { error: error.message, stack: error.stack });
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// Toggle processing restriction — Article 18 (right to restriction of processing)
+router.post("/:id/restrict", protect, async (req, res) => {
+  try {
+    if (req.params.id !== req.user.userId) {
+      return res.status(403).json({ success: false, message: "Not authorized" });
+    }
+
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+    const updated = await User.findByIdAndUpdate(
+      req.params.id,
+      { isRestricted: !user.isRestricted },
+      { new: true }
+    ).select("-password");
+
+    return res.status(200).json({
+      success: true,
+      message: updated.isRestricted ? "Processing restricted" : "Restriction lifted",
+      data: { isRestricted: updated.isRestricted },
+    });
+  } catch (error) {
+    logger.error("toggleRestriction.error", { error: error.message, stack: error.stack });
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
@@ -162,7 +235,7 @@ router.delete("/:id", protect, async (req, res) => {
         }));
         await plaidClient.itemRemove({ access_token: safeDecrypt(user.accessToken) });
       } catch (e) {
-        console.error("Plaid revocation on account deletion (non-fatal):", e.message);
+        logger.warn("deleteAccount.plaid_revocation_failed", { error: e.message });
       }
     }
 
@@ -174,7 +247,7 @@ router.delete("/:id", protect, async (req, res) => {
 
     res.status(200).json({ success: true, message: "Account deleted successfully" });
   } catch (error) {
-    console.error("Error deleting account:", error);
+    logger.error("deleteAccount.error", { error: error.message, stack: error.stack });
     res.status(500).json({ success: false, message: "Server error" });
   }
 });

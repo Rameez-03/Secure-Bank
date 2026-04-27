@@ -3,6 +3,7 @@ import User from "../models/userModel.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { sendPasswordResetEmail } from "../utils/email.js";
+import logger from "../utils/logger.js";
 
 const BCRYPT_ROUNDS = 12;
 const PASSWORD_MIN = 12;
@@ -84,6 +85,8 @@ export const register = async (req, res) => {
 
     res.cookie("rt", refreshToken, COOKIE_OPTIONS);
 
+    logger.info("register.success", { userId: user._id.toString(), ip: req.ip });
+
     return res.status(201).json({
       success: true,
       message: "Account created successfully",
@@ -98,7 +101,7 @@ export const register = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Error in register:", error);
+    logger.error("register.error", { error: error.message, stack: error.stack });
     return res.status(500).json({ success: false, message: "Server error during registration" });
   }
 };
@@ -118,18 +121,47 @@ export const login = async (req, res) => {
       return res.status(400).json({ success: false, message: "Enter a valid email address" });
     }
 
-    const user = await User.findOne({ email: trimmedEmail });
+    const user = await User.findOne({ email: trimmedEmail }).select("+failedLoginAttempts +lockUntil");
+
+    // Account lockout check — before bcrypt to avoid unnecessary compute on locked accounts
+    if (user && user.lockUntil && user.lockUntil > Date.now()) {
+      const minutesLeft = Math.ceil((user.lockUntil - Date.now()) / 60000);
+      logger.warn("login.locked", { email: trimmedEmail, ip: req.ip, lockUntil: user.lockUntil });
+      return res.status(423).json({
+        success: false,
+        message: `Account temporarily locked. Try again in ${minutesLeft} minute${minutesLeft !== 1 ? "s" : ""}.`,
+      });
+    }
+
     // Constant-time path: always run bcrypt.compare to prevent user-enumeration via timing
     const isValid = user
       ? await bcrypt.compare(password, user.password)
       : await bcrypt.compare(password, DUMMY_HASH).then(() => false);
 
     if (!user || !isValid) {
+      if (user) {
+        const attempts = (user.failedLoginAttempts || 0) + 1;
+        const update = { failedLoginAttempts: attempts };
+        if (attempts >= 5) {
+          update.lockUntil = new Date(Date.now() + 15 * 60 * 1000);
+          logger.warn("login.account_locked", { email: trimmedEmail, ip: req.ip, attempts });
+        } else {
+          logger.warn("login.failed", { email: trimmedEmail, ip: req.ip, attempts });
+        }
+        await User.findByIdAndUpdate(user._id, update);
+      } else {
+        logger.warn("login.failed", { email: trimmedEmail, ip: req.ip });
+      }
       return res.status(401).json({ success: false, message: "Invalid credentials" });
     }
 
+    // Success — reset lockout counters and record login time
+    await User.findByIdAndUpdate(user._id, { failedLoginAttempts: 0, lockUntil: null, lastLoginAt: new Date() });
+
     const accessToken = generateAccessToken(user._id);
     const refreshToken = generateRefreshToken(user._id);
+
+    logger.info("login.success", { userId: user._id.toString(), ip: req.ip });
 
     res.cookie("rt", refreshToken, COOKIE_OPTIONS);
 
@@ -147,7 +179,7 @@ export const login = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Error in login:", error);
+    logger.error("login.error", { error: error.message, stack: error.stack });
     return res.status(500).json({ success: false, message: "Server error during login" });
   }
 };
@@ -186,7 +218,7 @@ export const refreshToken = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Error in refreshToken:", error);
+    logger.error("refreshToken.error", { error: error.message, stack: error.stack });
     return res.status(500).json({ success: false, message: "Server error" });
   }
 };
@@ -200,7 +232,7 @@ export const getMe = async (req, res) => {
     }
     return res.status(200).json({ success: true, data: { user } });
   } catch (error) {
-    console.error("Error in getMe:", error);
+    logger.error("getMe.error", { error: error.message, stack: error.stack });
     return res.status(500).json({ success: false, message: "Server error" });
   }
 };
@@ -240,7 +272,7 @@ export const changePassword = async (req, res) => {
 
     return res.status(200).json({ success: true, message: "Password updated successfully" });
   } catch (error) {
-    console.error("Error in changePassword:", error);
+    logger.error("changePassword.error", { error: error.message, stack: error.stack });
     return res.status(500).json({ success: false, message: "Server error" });
   }
 };
@@ -279,9 +311,11 @@ export const forgotPassword = async (req, res) => {
 
     await sendPasswordResetEmail(user.email, resetUrl);
 
+    logger.info("password.reset.requested", { userId: user._id.toString(), ip: req.ip });
+
     return res.status(200).json(SAFE_RESPONSE);
   } catch (error) {
-    console.error("Error in forgotPassword:", error);
+    logger.error("forgotPassword.error", { error: error.message, stack: error.stack });
     return res.status(500).json({ success: false, message: "Server error" });
   }
 };
@@ -325,9 +359,11 @@ export const resetPassword = async (req, res) => {
       $unset: { resetPasswordToken: "", resetPasswordExpires: "" },
     });
 
+    logger.info("password.reset.completed", { userId: user._id.toString(), ip: req.ip });
+
     return res.status(200).json({ success: true, message: "Password reset successfully. You can now sign in." });
   } catch (error) {
-    console.error("Error in resetPassword:", error);
+    logger.error("resetPassword.error", { error: error.message, stack: error.stack });
     return res.status(500).json({ success: false, message: "Server error" });
   }
 };
@@ -338,7 +374,7 @@ export const logout = async (req, res) => {
     res.clearCookie("rt", COOKIE_OPTIONS);
     return res.status(200).json({ success: true, message: "Logged out successfully" });
   } catch (error) {
-    console.error("Error in logout:", error);
+    logger.error("logout.error", { error: error.message, stack: error.stack });
     return res.status(500).json({ success: false, message: "Server error" });
   }
 };

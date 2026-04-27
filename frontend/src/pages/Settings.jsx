@@ -1,6 +1,7 @@
 import { useState, useContext } from 'react';
+import { Link } from 'react-router-dom';
 import styled from 'styled-components';
-import { Check, Eye, EyeOff } from 'lucide-react';
+import { Check, Eye, EyeOff, Download, Lock, Unlock } from 'lucide-react';
 import { AuthContext } from '../context/AuthContext';
 import { userAPI, authAPI, plaidAPI, setAccessToken } from '../services/api';
 import { isStrongPassword } from '../utils/validators';
@@ -113,6 +114,9 @@ export default function Settings() {
   const [syncing, setSyncing] = useState(false);
   const [unlinking, setUnlinking] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [togglingRestriction, setTogglingRestriction] = useState(false);
+  const [isRestricted, setIsRestricted] = useState(user?.isRestricted || false);
 
   const initials = user?.name
     ? user.name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
@@ -198,6 +202,40 @@ export default function Settings() {
       toast.error(err.response?.data?.message || 'Failed to delete account');
     } finally {
       setDeletingAccount(false);
+    }
+  };
+
+  const handleExport = async () => {
+    try {
+      setExporting(true);
+      const { data } = await userAPI.exportData(user.id);
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `securebank-export-${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Data exported successfully');
+    } catch {
+      toast.error('Export failed — please try again');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleToggleRestriction = async () => {
+    const action = isRestricted ? 'lift the restriction on' : 'restrict processing on';
+    if (!window.confirm(`Are you sure you want to ${action} your account?`)) return;
+    try {
+      setTogglingRestriction(true);
+      const { data } = await userAPI.toggleRestriction(user.id);
+      setIsRestricted(data.data.isRestricted);
+      toast.success(data.data.isRestricted ? 'Processing restricted — no new data will be processed' : 'Restriction lifted');
+    } catch {
+      toast.error('Failed to update restriction status');
+    } finally {
+      setTogglingRestriction(false);
     }
   };
 
@@ -336,6 +374,38 @@ export default function Settings() {
           </div>
         </FormGrid>
       </Section>
+      {/* Privacy & Data */}
+      <Section>
+        <SectionTitle>Privacy &amp; Data</SectionTitle>
+        <FormGrid>
+          <div style={{ fontSize: 13, color: '#71717A', lineHeight: 1.6 }}>
+            Export a copy of all your personal data in JSON format (Articles 15 &amp; 20 UK GDPR). View our{' '}
+            <Link to="/privacy-policy" style={{ color: '#DC2626', textDecoration: 'none' }}>Privacy Policy</Link>.
+          </div>
+          <div>
+            <Button size="sm" variant="outline" onClick={handleExport} disabled={exporting}>
+              <Download size={13} /> {exporting ? 'Exporting…' : 'Export My Data'}
+            </Button>
+          </div>
+          <BankRow>
+            <BankInfo>
+              <BankName>Restrict Processing</BankName>
+              <BankStatus>
+                {isRestricted
+                  ? <><ConnectedDot style={{ background: '#DC2626' }} />Active — new data processing is paused</>
+                  : <><ConnectedDot />Processing is active</>}
+              </BankStatus>
+            </BankInfo>
+            <Button size="sm" variant={isRestricted ? 'outline' : 'danger'} onClick={handleToggleRestriction} disabled={togglingRestriction}>
+              {togglingRestriction ? 'Updating…' : isRestricted ? <><Unlock size={13} /> Lift Restriction</> : <><Lock size={13} /> Restrict Processing</>}
+            </Button>
+          </BankRow>
+          <div style={{ fontSize: 12, color: '#3F3F46', lineHeight: 1.6 }}>
+            Restricting processing pauses new transaction creation and bank sync while keeping your account and data intact (Article 18 UK GDPR).
+          </div>
+        </FormGrid>
+      </Section>
+
       {/* Danger Zone */}
       <Section style={{ borderColor: 'rgba(220,38,38,0.3)' }}>
         <SectionTitle style={{ color: '#DC2626', borderBottomColor: 'rgba(220,38,38,0.2)' }}>

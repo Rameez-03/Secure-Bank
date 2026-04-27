@@ -72,6 +72,8 @@ export const userAPI = {
   updateProfile: (userId, data) => API.put(`/users/${userId}`, data),
   getHealthScore: () => API.get("/users/health-score"),
   deleteAccount: (userId) => API.delete(`/users/${userId}`),
+  exportData: (userId) => API.get(`/users/${userId}/export`),
+  toggleRestriction: (userId) => API.post(`/users/${userId}/restrict`),
 };
 
 // ==========================================
