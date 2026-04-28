@@ -27,3 +27,33 @@ jobs:
       - name: Run tests
         run: npm test
         working-directory: backend
+
+  scan:
+    name: Container vulnerability scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: docker build -t secure-bank-backend ./backend
+
+      - name: Build frontend image
+        run: docker build -t secure-bank-frontend ./frontend
+
+      - name: Scan backend image with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: secure-bank-backend
+          format: table
+          exit-code: '0'
+          severity: CRITICAL,HIGH
+
+      - name: Scan frontend image with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: secure-bank-frontend
+          format: table
+          exit-code: '0'
+          severity: CRITICAL,HIGH

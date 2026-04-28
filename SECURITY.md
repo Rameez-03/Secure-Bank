@@ -18,6 +18,7 @@
 | 1.2 | 2026-04-26 | Fix Pass 3 — deep controller, model, and frontend review |
 | 1.3 | 2026-04-26 | Fix Pass 4 — password change and reset implementation |
 | 2.0 | 2026-04-26 | Restructured to full audit standard: scope, asset inventory, threat model, risk scoring methodology, residual risk register, attestation |
+| 2.1 | 2026-04-28 | Automated SAST scan via Arko — 2 findings identified, documented as R-10 and R-11 |
 
 ---
 
@@ -48,7 +49,7 @@
 ### 1.3 Testing Approach
 
 **Type:** White-box (full source code access)  
-**Method:** Manual static code review assisted by `npm audit`  
+**Method:** Manual static code review assisted by `npm audit`; automated SAST via Arko (2026-04-28)  
 **Coverage:** All backend controllers, middleware, models, and routes; all frontend pages, hooks, and services  
 **Dynamic testing:** No DAST or penetration testing has been performed. A third-party pentest is recommended before any production deployment with real user data.
 
@@ -550,6 +551,8 @@ All unresolved findings from across all fix passes, consolidated into a single a
 | R-07 | No two-factor authentication — single credential factor only | Authentication | 2 | 3 | 6 | **Medium** | `ENABLE_2FA` flag exists in `.env` — needs TOTP implementation (RFC 6238) |
 | R-08 | Redis configured in `.env` but unused — prerequisite for R-01 token blacklist | Infrastructure | 1 | 3 | 3 | **Low** | Required dependency for R-01 |
 | R-09 | No API versioning — `/api/v1/` prefix not applied | Maintainability | 1 | 2 | 2 | **Low** | Recommended before public release |
+| R-10 | CORS_ORIGIN set to HTTP — allows protocol downgrade; MitM attacker on the network path can intercept traffic and steal JWT tokens or httpOnly cookies if SameSite is not Strict | Transport | 3 | 4 | 12 | **Medium** | Set `CORS_ORIGIN` to `https://` once a domain and TLS certificate are provisioned. Identified by Arko SAST (docker-compose.yml:36) |
+| R-11 | Application secrets loaded via `env_file` directive — if the `.env` file is committed to version control, baked into a container image, or accessible via directory traversal, all secrets (JWT keys, Plaid credentials, encryption key, MongoDB URI) are compromised | Secrets Management | 2 | 5 | 10 | **Medium** | `.env` is gitignored and never committed. Production path: migrate to AWS Secrets Manager or inject secrets via orchestration platform environment. Identified by Arko SAST (docker-compose.yml:30) |
 
 ---
 
@@ -578,7 +581,29 @@ EMAIL_FROM="SecureBank <noreply@your-domain.com>"
 
 ---
 
-## 14. Attestation
+## 14. Automated SAST Analysis — Arko (2026-04-28)
+
+An automated static application security test was run against the codebase using **Arko** (AI-powered SAST). The scan produced a Hackable Score of **59% (Elevated Risk)** and identified 2 high-severity findings in `docker-compose.yml`.
+
+### 14.1 Findings
+
+| ID | Severity | File | Line | Title | Attack Scenario |
+|----|----------|------|------|-------|----------------|
+| R-10 | HIGH | `docker-compose.yml` | 36 | CORS Origin Misconfiguration with HTTP Protocol | `CORS_ORIGIN=http://localhost` uses unencrypted HTTP. In production, an MitM attacker can intercept traffic and steal JWT tokens or httpOnly cookies if SameSite is not set to Strict. Related threat: likely-4 |
+| R-11 | HIGH | `docker-compose.yml` | 30 | Secrets Loaded from .env File Without Encryption | `env_file: ./backend/.env` loads credentials (JWT_SECRET, PLAID_SECRET, MONGODB_URI, ENCRYPTION_KEY) as plain environment variables. If committed to version control, exposed in container images, or accessible via directory traversal, all secrets are compromised. Related threat: WC-2 |
+
+### 14.2 Assessment
+
+Both findings are valid infrastructure-level concerns. Neither represents a flaw in the application logic or a new code vulnerability — they reflect deployment configuration gaps that are well-understood and already partially mitigated:
+
+- **R-10**: `SameSite: strict` is already enforced in production (see §6.4). The HTTP-only gap will be fully closed when HTTPS is provisioned with a domain. Accepted risk for portfolio deployment.
+- **R-11**: The `.env` file is listed in `.gitignore` and has never been committed to version control. The production mitigation path is AWS Secrets Manager. Accepted risk for single-server portfolio deployment.
+
+Both findings are logged in the Residual Risk Register as R-10 and R-11.
+
+---
+
+## 15. Attestation
 
 **Assessed by:** Rameez (developer, Secure Bank project)  
 **Assessment date:** 2026-04-26  
