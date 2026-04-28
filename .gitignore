@@ -41,3 +41,4 @@ tmp/
 
 # Claude Code local settings
 .claude/
+secure-bank-key.pem
