@@ -14,6 +14,7 @@ A full-stack personal finance management application built with security and reg
 - [Architecture](#architecture)
 - [Features](#features)
 - [Security](#security)
+- [DevSecOps Pipeline](#devsecops-pipeline)
 - [GDPR & Compliance](#gdpr--compliance)
 - [Testing](#testing)
 - [Docker Deployment](#docker-deployment)
@@ -82,6 +83,9 @@ The project goes beyond typical portfolio apps by incorporating:
 | **Logging** | Winston (structured JSON) |
 | **Security Middleware** | Helmet, CORS, HPP, express-mongo-sanitize, express-rate-limit |
 | **Containerisation** | Docker, Docker Compose, nginx |
+| **SAST** | Arko (AI-powered static analysis) |
+| **Container Scanning** | Trivy (CRITICAL/HIGH CVE scanning via GitHub Actions) |
+| **CI/CD** | GitHub Actions (automated test + scan pipeline) |
 
 ---
 
@@ -164,6 +168,54 @@ Security was assessed using the **STRIDE threat model** (Spoofing, Tampering, Re
 
 ---
 
+## DevSecOps Pipeline
+
+Security tooling is integrated directly into the development workflow — not treated as a separate audit phase.
+
+### SAST — Arko
+
+Static application security testing was performed using **Arko** (AI-powered SAST). Two scans were run to measure the effect of remediation.
+
+**Initial scan — 59% Hackable Score (Elevated Risk)**
+
+![Arko Initial Scan](docs/screenshots/ArkoScan1.png)
+
+Arko identified 2 high-severity findings in `docker-compose.yml`: a hardcoded HTTP origin in the CORS configuration (R-10) and secrets loaded via `env_file` without an encryption layer (R-11).
+
+**Threat model & compliance mapping**
+
+![Arko Threat Model](docs/screenshots/ArkoThreatModel.png)
+
+![Arko Compliance View](docs/screenshots/ArkoCompliance.png)
+
+**Post-remediation rescan — 48% Hackable Score**
+
+![Arko Rescan](docs/screenshots/ArkoScan2.png)
+
+After removing hardcoded HTTP values and parameterising CORS configuration via environment variables, the Hackable Score dropped from **59% → 48%**. The remaining 4 findings are infrastructure-level gaps (HTTPS provisioning, secrets manager) documented as accepted risks in `SECURITY.md §14`.
+
+| Scan | Score | Findings | Status |
+|------|-------|----------|--------|
+| Initial | 59% Elevated Risk | 2 (R-10, R-11) | Remediated |
+| Post-fix | 48% | 4 (infrastructure gaps) | Accepted / documented |
+
+### Container Scanning — Trivy
+
+Both Docker images are scanned for CRITICAL and HIGH CVEs on every push via GitHub Actions using `aquasecurity/trivy-action`. Results are printed to the CI log.
+
+### CI Pipeline — GitHub Actions
+
+![CI](https://github.com/Rameez-03/Secure-Bank/actions/workflows/ci.yml/badge.svg)
+
+Every push triggers a two-job pipeline running in parallel:
+
+| Job | What it does |
+|-----|-------------|
+| `test` | Installs backend dependencies and runs the full 38-test Jest suite |
+| `scan` | Builds both Docker images and runs Trivy CVE scans on each |
+
+---
+
 ## GDPR & Compliance
 
 UK GDPR (DPA 2018) compliance was assessed and implemented across the application. All compliance work is documented in the files below.
@@ -171,7 +223,7 @@ UK GDPR (DPA 2018) compliance was assessed and implemented across the applicatio
 | Document | Contents |
 |----------|----------|
 | [`COMPLIANCE.md`](docs/COMPLIANCE.md) | Full compliance audit — UK GDPR article-by-article, OWASP Top 10, ROPA (7 processing activities), Gap Register (C-01 to C-13), remediation plan |
-| [`SECURITY.md`](SECURITY.md) | Security audit — STRIDE threat model, risk scoring matrix (5×5 L×I), residual risk register (R-01 to R-09) |
+| [`SECURITY.md`](SECURITY.md) | Security audit — STRIDE threat model, risk scoring matrix (5×5 L×I), residual risk register (R-01 to R-11), automated SAST findings (§14) |
 | [`DPIA.md`](docs/DPIA.md) | Article 35 Data Protection Impact Assessment — 8 risks identified and mitigated, processing approved |
 | [`DATA_RETENTION_POLICY.md`](docs/DATA_RETENTION_POLICY.md) | Retention schedule for all data categories, inactive account deletion process, legal holds clause |
 | [`BREACH_REGISTER.md`](docs/BREACH_REGISTER.md) | Article 33(5) breach register — 72-hour response procedure, risk classification guide, ICO notification checklist |

@@ -352,7 +352,7 @@ The OWASP Top 10 provides a broadly accepted standard of the most critical appli
 | A06 | Vulnerable & Outdated Components | npm audit (0 vulnerabilities post-hardening); dependency management | ⚠️ **Partial** | 0 vulnerabilities at audit date; no automated monitoring for future advisories |
 | A07 | Identification & Authentication Failures | Password policy; brute force protection; MFA; session management; token storage | ⚠️ **Partial** | Strong password policy; httpOnly cookies; no MFA; no account lockout after N failures |
 | A08 | Software & Data Integrity Failures | Package integrity (`package-lock.json`); no unsafe deserialisation; no untrusted update channels | ✅ **Compliant** | No custom deserialisation; lockfile present |
-| A09 | Security Logging & Monitoring Failures | Persistent security event logging; failed login alerts; anomaly detection | ✅ **Compliant** | Winston structured JSON logger — auth events emit persistent logs with userId, IP, and event type |
+| A09 | Security Logging & Monitoring Failures | Persistent security event logging; failed login alerts; anomaly detection; automated SAST | ✅ **Compliant** | Winston structured JSON logger — auth events emit persistent logs with userId, IP, and event type. Automated SAST via Arko (2026-04-28) — initial scan 59% hackable, post-remediation rescan 48%; findings documented in SECURITY.md §14 |
 | A10 | Server-Side Request Forgery (SSRF) | No user-controlled URLs fetched server-side | ✅ **N/A — Compliant** | Application does not perform any server-side URL fetches based on user input |
 
 **Summary:** 6 Compliant / 3 Partial / 1 Non-compliant  

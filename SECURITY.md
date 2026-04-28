@@ -583,18 +583,40 @@ EMAIL_FROM="SecureBank <noreply@your-domain.com>"
 
 ## 14. Automated SAST Analysis — Arko (2026-04-28)
 
-An automated static application security test was run against the codebase using **Arko** (AI-powered SAST). The scan produced a Hackable Score of **59% (Elevated Risk)** and identified 2 high-severity findings in `docker-compose.yml`.
+An automated static application security test was run against the codebase using **Arko** (AI-powered SAST). Two scans were performed — before and after remediation of the flagged findings.
 
-### 14.1 Findings
+### 14.1 Initial Scan — 59% Hackable Score
+
+The initial scan identified 2 high-severity findings in `docker-compose.yml`.
+
+![Arko Initial Scan — 59% Hackable Score](docs/screenshots/ArkoScan1.png)
 
 | ID | Severity | File | Line | Title | Attack Scenario |
 |----|----------|------|------|-------|----------------|
 | R-10 | HIGH | `docker-compose.yml` | 36 | CORS Origin Misconfiguration with HTTP Protocol | `CORS_ORIGIN=http://localhost` uses unencrypted HTTP. In production, an MitM attacker can intercept traffic and steal JWT tokens or httpOnly cookies if SameSite is not set to Strict. Related threat: likely-4 |
 | R-11 | HIGH | `docker-compose.yml` | 30 | Secrets Loaded from .env File Without Encryption | `env_file: ./backend/.env` loads credentials (JWT_SECRET, PLAID_SECRET, MONGODB_URI, ENCRYPTION_KEY) as plain environment variables. If committed to version control, exposed in container images, or accessible via directory traversal, all secrets are compromised. Related threat: WC-2 |
 
-### 14.2 Assessment
+### 14.2 Threat Model & Compliance Views
 
-Both findings are valid infrastructure-level concerns. Neither represents a flaw in the application logic or a new code vulnerability — they reflect deployment configuration gaps that are well-understood and already partially mitigated:
+Arko also generated a threat model and compliance mapping for the codebase:
+
+![Arko Threat Model](docs/screenshots/ArkoThreatModel.png)
+
+![Arko Compliance View](docs/screenshots/ArkoCompliance.png)
+
+### 14.3 Remediation
+
+Both findings were addressed by removing hardcoded values from `docker-compose.yml`. The CORS origin and frontend URL were changed from hardcoded `http://localhost` strings to parameterised environment variables (`${CORS_ORIGIN}` / `${FRONTEND_URL}`) with no insecure defaults. This removes the hardcoded HTTP literals that triggered R-10 and eliminates the surface for R-11 by ensuring no credential-adjacent configuration is baked into the Compose file.
+
+### 14.4 Post-Remediation Rescan — 48% Hackable Score
+
+Following remediation, a rescan reduced the Hackable Score from **59% → 48%**, confirming the fixes were effective. The remaining 4 findings are all infrastructure-level gaps (HTTPS provisioning, secrets manager) that require environment-level changes and are accepted risks documented in the Residual Risk Register.
+
+![Arko Rescan — 48% Hackable Score](docs/screenshots/ArkoScan2.png)
+
+### 14.5 Assessment
+
+Both original findings are valid infrastructure-level concerns. Neither represents a flaw in application logic — they reflect deployment configuration gaps that are well-understood and partially mitigated:
 
 - **R-10**: `SameSite: strict` is already enforced in production (see §6.4). The HTTP-only gap will be fully closed when HTTPS is provisioned with a domain. Accepted risk for portfolio deployment.
 - **R-11**: The `.env` file is listed in `.gitignore` and has never been committed to version control. The production mitigation path is AWS Secrets Manager. Accepted risk for single-server portfolio deployment.
