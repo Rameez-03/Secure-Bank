@@ -84,6 +84,7 @@ The project goes beyond typical portfolio apps by incorporating:
 | **Security Middleware** | Helmet, CORS, HPP, express-mongo-sanitize, express-rate-limit |
 | **Containerisation** | Docker, Docker Compose, nginx |
 | **SAST** | Arko (AI-powered static analysis) |
+| **Dependency Scanning** | Snyk (dependency + Docker image CVE scanning, automated fix PRs) |
 | **Container Scanning** | Trivy (CRITICAL/HIGH CVE scanning via GitHub Actions) |
 | **CI/CD** | GitHub Actions (automated test + scan pipeline) |
 
@@ -198,6 +199,33 @@ After removing hardcoded HTTP values and parameterising CORS configuration via e
 |------|-------|----------|--------|
 | Initial | 59% Elevated Risk | 2 (R-10, R-11) | Remediated |
 | Post-fix | 48% | 4 (infrastructure gaps) | Accepted / documented |
+
+### Dependency & Container Scanning — Snyk
+
+**Snyk** was integrated via GitHub to continuously scan all four project targets for known CVEs — both application dependencies and Docker base images.
+
+**Initial scan — 3 vulnerabilities in frontend Docker image**
+
+![Snyk Frontend Dockerfile](docs/screenshots/DockerSnyk.png)
+
+The `frontend/Dockerfile` used `nginx:alpine` as its base image, which contained 3 known CVEs in OS-level packages (`xz/xz-libs`, `libxpm`, `nghttp2`). The backend image (`node:20-alpine`) was fully clean.
+
+| Project | Initial Issues | Status |
+|---------|---------------|--------|
+| `backend/Dockerfile` | 0 | Clean |
+| `backend/package.json` | 0 | Clean |
+| `frontend/package.json` | 0 | Clean |
+| `frontend/Dockerfile` | 1 Medium, 2 Low | Remediated |
+
+**Automated fix via Snyk PR**
+
+Snyk automatically opened a pull request to upgrade the base image from `nginx:alpine` to `nginx:1.30.0-alpine3.23-slim`. The PR triggered the full CI pipeline — all checks passed — and was merged into `main`.
+
+**Post-fix rescan — 0 vulnerabilities across all projects**
+
+![Snyk Clean Dashboard](docs/screenshots/DockerVulnerability.png)
+
+After merging the Snyk PR, all 4 projects show **0 Critical / 0 High / 0 Medium / 0 Low**. The full cycle — scan → identify → automated fix PR → CI verification → merge → rescan — was completed entirely within the pipeline.
 
 ### Container Scanning — Trivy
 
