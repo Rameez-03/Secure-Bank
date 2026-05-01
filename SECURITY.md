@@ -19,7 +19,7 @@
 | 1.3 | 2026-04-26 | Fix Pass 4 — password change and reset implementation |
 | 2.0 | 2026-04-26 | Restructured to full audit standard: scope, asset inventory, threat model, risk scoring methodology, residual risk register, attestation |
 | 2.1 | 2026-04-28 | Automated SAST scan via Arko — 2 findings identified, documented as R-10 and R-11 |
-| 2.2 | 2026-04-30 | Snyk dependency and container scanning — 3 CVEs identified in nginx:alpine, remediated via automated fix PR, all targets now clean |
+| 2.2 | 2026-04-30 | Snyk scanning added — findings moved to DEVSECOPS.md; cross-reference added to §15 |
 
 ---
 
@@ -626,48 +626,11 @@ Both findings are logged in the Residual Risk Register as R-10 and R-11.
 
 ---
 
-## 15. Dependency & Container Scanning — Snyk (2026-04-30)
-
-**Snyk** was integrated with the GitHub repository to perform continuous dependency and Docker image scanning across all four project targets.
-
-### 15.1 Scan Targets
-
-| Target | Type | Base Image |
-|--------|------|-----------|
-| `backend/package.json` | Dependency scan | — |
-| `frontend/package.json` | Dependency scan | — |
-| `backend/Dockerfile` | Container scan | `node:20-alpine` |
-| `frontend/Dockerfile` | Container scan | `nginx:alpine` |
-
-### 15.2 Initial Findings
-
-Three vulnerabilities were identified in the `frontend/Dockerfile`, all in OS-level packages bundled with the `nginx:alpine` base image. No vulnerabilities were found in application dependencies or the backend image.
-
-![Snyk Frontend Dockerfile](docs/screenshots/DockerSnyk.png)
-
-| ID | Severity | Package | CVE | Description |
-|----|----------|---------|-----|-------------|
-| — | Medium | `xz/xz-libs@5.8.2-r0` | CVE-2026-34743 | Heap-based Buffer Overflow — fixed in 5.8.3-r0 |
-| — | Low | `libxpm/libxpm@3.5.17-r0` | CVE-2026-4367 | Fixed in 3.5.19-r0 |
-| — | Low | `nghttp2` | SNYK-ALPINE323-NGHTTP2-16320891 | Reachable Assertion |
-
-All three have **no known exploit** in the wild. The backend image (`node:20-alpine`) was confirmed up to date with 0 findings.
-
-![Snyk Backend Dockerfile — Clean](docs/screenshots/DockerSynk2.png)
-
-### 15.3 Remediation
-
-Snyk automatically opened a pull request ([PR #1](https://github.com/Rameez-03/Secure-Bank/pull/1)) to upgrade the frontend base image from `nginx:alpine` to `nginx:1.30.0-alpine3.23-slim`. The PR triggered the full CI pipeline — both the Jest test suite and Trivy container scan passed — and was merged into `main`.
-
-### 15.4 Post-Fix Rescan — 0 Vulnerabilities
-
-Following the merge, Snyk rescanned all four projects. All targets returned **0 Critical / 0 High / 0 Medium / 0 Low**.
-
-The complete remediation cycle — automated scan → CVE identification → fix PR → CI gate → merge → clean rescan — was completed entirely within the automated pipeline with no manual intervention required.
+> Snyk dependency and container scanning findings, CI pipeline details, and real-time alerting implementation are documented in [`DEVSECOPS.md`](DEVSECOPS.md).
 
 ---
 
-## 16. Attestation
+## 15. Attestation
 
 **Assessed by:** Rameez (developer, Secure Bank project)  
 **Assessment date:** 2026-04-26  
