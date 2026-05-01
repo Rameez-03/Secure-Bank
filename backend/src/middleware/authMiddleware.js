@@ -1,4 +1,5 @@
 import jwt from "jsonwebtoken";
+import { sendAlert } from "../utils/alert.js";
 
 export const protect = (req, res, next) => {
   try {
@@ -28,6 +29,8 @@ export const protect = (req, res, next) => {
     if (error.name === "TokenExpiredError") {
       return res.status(401).json({ success: false, message: "Token expired — please refresh" });
     }
+    // Tampered or forged token — not a normal expiry
+    sendAlert("auth.invalid_token", "unknown", req.ip);
     return res.status(401).json({ success: false, message: "Not authorized — invalid token" });
   }
 };

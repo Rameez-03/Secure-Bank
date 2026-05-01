@@ -87,6 +87,7 @@ The project goes beyond typical portfolio apps by incorporating:
 | **Dependency Scanning** | Snyk (dependency + Docker image CVE scanning, automated fix PRs) |
 | **Container Scanning** | Trivy (CRITICAL/HIGH CVE scanning via GitHub Actions) |
 | **CI/CD** | GitHub Actions (automated test + scan pipeline) |
+| **Security Alerting** | n8n + Slack (real-time event routing with severity filtering and throttling) |
 
 ---
 
@@ -171,76 +172,92 @@ Security was assessed using the **STRIDE threat model** (Spoofing, Tampering, Re
 
 ## DevSecOps Pipeline
 
-Security tooling is integrated directly into the development workflow — not treated as a separate audit phase.
+Security tooling is integrated across the full development lifecycle — from static analysis at write time, to vulnerability scanning on every push, to real-time alerting in production.
+
+| Tool | Role |
+|------|------|
+| **Arko** | AI-powered SAST — threat model, compliance mapping, hackable score |
+| **Snyk** | Dependency + container CVE scanning, automated fix PRs |
+| **Trivy** | Docker image scanning in CI (CRITICAL/HIGH) |
+| **GitHub Actions** | CI pipeline — tests + scans on every push |
+| **n8n + Slack** | Real-time security event alerting with severity routing |
+
+---
 
 ### SAST — Arko
 
-Static application security testing was performed using **Arko** (AI-powered SAST). Two scans were run to measure the effect of remediation.
-
-**Initial scan — 59% Hackable Score (Elevated Risk)**
+Arko scanned the codebase and produced a threat model, compliance mapping, and a Hackable Score. Two scans were run — before and after remediation.
 
 ![Arko Initial Scan](docs/screenshots/ArkoScan1.png)
 
-Arko identified 2 high-severity findings in `docker-compose.yml`: a hardcoded HTTP origin in the CORS configuration (R-10) and secrets loaded via `env_file` without an encryption layer (R-11).
-
-**Threat model & compliance mapping**
-
-![Arko Threat Model](docs/screenshots/ArkoThreatModel.png)
-
-![Arko Compliance View](docs/screenshots/ArkoCompliance.png)
-
-**Post-remediation rescan — 48% Hackable Score**
+Initial scan found 2 HIGH findings in `docker-compose.yml`: hardcoded HTTP in CORS origin (MitM risk) and secrets loaded via `env_file`. Both were remediated by removing hardcoded values and parameterising via environment variables.
 
 ![Arko Rescan](docs/screenshots/ArkoScan2.png)
 
-After removing hardcoded HTTP values and parameterising CORS configuration via environment variables, the Hackable Score dropped from **59% → 48%**. The remaining 4 findings are infrastructure-level gaps (HTTPS provisioning, secrets manager) documented as accepted risks in `SECURITY.md §14`.
+| Scan | Score | Findings |
+|------|-------|----------|
+| Initial | 59% Elevated Risk | 2 HIGH — remediated |
+| Post-fix | 48% | 4 infrastructure gaps — accepted, documented in `SECURITY.md §14` |
 
-| Scan | Score | Findings | Status |
-|------|-------|----------|--------|
-| Initial | 59% Elevated Risk | 2 (R-10, R-11) | Remediated |
-| Post-fix | 48% | 4 (infrastructure gaps) | Accepted / documented |
+---
 
 ### Dependency & Container Scanning — Snyk
 
-**Snyk** was integrated via GitHub to continuously scan all four project targets for known CVEs — both application dependencies and Docker base images.
-
-**Initial scan — 3 vulnerabilities in frontend Docker image**
+Snyk monitors all 4 project targets continuously via GitHub integration.
 
 ![Snyk Frontend Dockerfile](docs/screenshots/DockerSnyk.png)
 
-The `frontend/Dockerfile` used `nginx:alpine` as its base image, which contained 3 known CVEs in OS-level packages (`xz/xz-libs`, `libxpm`, `nghttp2`). The backend image (`node:20-alpine`) was fully clean.
+Initial scan found 3 CVEs in the `nginx:alpine` base image (`xz/xz-libs`, `libxpm`, `nghttp2`). Snyk automatically opened a fix PR to upgrade to `nginx:1.30.0-alpine3.23-slim`. The PR triggered the full CI pipeline, all checks passed, and was merged. Post-fix rescan: **0 vulnerabilities across all 4 targets**.
 
-| Project | Initial Issues | Status |
-|---------|---------------|--------|
-| `backend/Dockerfile` | 0 | Clean |
-| `backend/package.json` | 0 | Clean |
-| `frontend/package.json` | 0 | Clean |
-| `frontend/Dockerfile` | 1 Medium, 2 Low | Remediated |
+Full cycle: automated scan → CVE identification → fix PR → CI gate → merge → clean rescan.
 
-**Automated fix via Snyk PR**
-
-Snyk automatically opened a pull request to upgrade the base image from `nginx:alpine` to `nginx:1.30.0-alpine3.23-slim`. The PR triggered the full CI pipeline — all checks passed — and was merged into `main`.
-
-**Post-fix rescan — 0 vulnerabilities across all projects**
-
-![Snyk Clean Dashboard](docs/screenshots/DockerVulnerability.png)
-
-After merging the Snyk PR, all 4 projects show **0 Critical / 0 High / 0 Medium / 0 Low**. The full cycle — scan → identify → automated fix PR → CI verification → merge → rescan — was completed entirely within the pipeline.
-
-### Container Scanning — Trivy
-
-Both Docker images are scanned for CRITICAL and HIGH CVEs on every push via GitHub Actions using `aquasecurity/trivy-action`. Results are printed to the CI log.
+---
 
 ### CI Pipeline — GitHub Actions
 
 ![CI](https://github.com/Rameez-03/Secure-Bank/actions/workflows/ci.yml/badge.svg)
 
-Every push triggers a two-job pipeline running in parallel:
+Two jobs run in parallel on every push to `main`:
 
 | Job | What it does |
 |-----|-------------|
-| `test` | Installs backend dependencies and runs the full 38-test Jest suite |
-| `scan` | Builds both Docker images and runs Trivy CVE scans on each |
+| `test` | Runs 38 Jest tests — auth, encryption, route guards |
+| `scan` | Builds both Docker images and runs Trivy CVE scans |
+
+---
+
+### Real-Time Security Alerting — n8n + Slack
+
+Security events from the backend are forwarded to an **n8n** automation workflow via webhook, which routes alerts to a dedicated **#security-alerts** Slack channel.
+
+![Slack Alert](docs/screenshots/SlackAlert.png)
+
+**Alert design — solving alert fatigue**
+
+A naive implementation sends every event to Slack, which creates noise that gets ignored — defeating the purpose. The alerting layer addresses this with two controls:
+
+- **Severity routing** — LOW events (new registrations, bank linked) are logged by Winston only and never sent to Slack. Only MEDIUM and HIGH events alert.
+- **Throttling** — MEDIUM events are throttled to one alert per 5 minutes per IP. A brute force attempt sends one alert, not hundreds.
+- **HIGH events bypass throttling** — account lockouts, forged tokens, and rate limit hits always fire immediately.
+
+| Severity | Behaviour | Examples |
+|----------|-----------|---------|
+| 🔴 HIGH | Immediate, every time | Account locked, invalid token, auth rate limit hit, account deleted |
+| 🟡 MEDIUM | Once per 5 min per IP | Failed login, password reset, data export, bank unlinked |
+| ⚪ LOW | Winston log only | New registration, bank linked |
+
+**Events monitored:**
+
+| Event | Severity | Why it matters |
+|-------|----------|---------------|
+| `login.account_locked` | HIGH | Brute force in progress |
+| `auth.invalid_token` | HIGH | Forged or replayed JWT |
+| `rate_limit.auth` | HIGH | Automated attack against auth endpoints |
+| `account.deleted` | HIGH | Permanent data destruction |
+| `login.failed` | MEDIUM | Credential stuffing pattern |
+| `password.reset.requested` | MEDIUM | Potential account takeover attempt |
+| `data.export` | MEDIUM | Full data export — exfiltration risk |
+| `plaid.bank_unlinked` | MEDIUM | Financial data access removed |
 
 ---
 

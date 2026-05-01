@@ -4,6 +4,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { sendPasswordResetEmail } from "../utils/email.js";
 import logger from "../utils/logger.js";
+import { sendAlert } from "../utils/alert.js";
 
 const BCRYPT_ROUNDS = 12;
 const PASSWORD_MIN = 12;
@@ -127,6 +128,7 @@ export const login = async (req, res) => {
     if (user && user.lockUntil && user.lockUntil > Date.now()) {
       const minutesLeft = Math.ceil((user.lockUntil - Date.now()) / 60000);
       logger.warn("login.locked", { email: trimmedEmail, ip: req.ip, lockUntil: user.lockUntil });
+      sendAlert("login.locked", trimmedEmail, req.ip);
       return res.status(423).json({
         success: false,
         message: `Account temporarily locked. Try again in ${minutesLeft} minute${minutesLeft !== 1 ? "s" : ""}.`,
@@ -145,8 +147,10 @@ export const login = async (req, res) => {
         if (attempts >= 5) {
           update.lockUntil = new Date(Date.now() + 15 * 60 * 1000);
           logger.warn("login.account_locked", { email: trimmedEmail, ip: req.ip, attempts });
+          sendAlert("login.account_locked", trimmedEmail, req.ip);
         } else {
           logger.warn("login.failed", { email: trimmedEmail, ip: req.ip, attempts });
+          sendAlert("login.failed", trimmedEmail, req.ip);
         }
         await User.findByIdAndUpdate(user._id, update);
       } else {
@@ -312,6 +316,7 @@ export const forgotPassword = async (req, res) => {
     await sendPasswordResetEmail(user.email, resetUrl);
 
     logger.info("password.reset.requested", { userId: user._id.toString(), ip: req.ip });
+    sendAlert("password.reset.requested", user.email, req.ip);
 
     return res.status(200).json(SAFE_RESPONSE);
   } catch (error) {
@@ -360,6 +365,7 @@ export const resetPassword = async (req, res) => {
     });
 
     logger.info("password.reset.completed", { userId: user._id.toString(), ip: req.ip });
+    sendAlert("password.reset.completed", user._id.toString(), req.ip);
 
     return res.status(200).json({ success: true, message: "Password reset successfully. You can now sign in." });
   } catch (error) {

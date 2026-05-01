@@ -2,6 +2,7 @@ import { Configuration, PlaidApi, PlaidEnvironments, Products, CountryCode } fro
 import User from '../models/userModel.js';
 import { encrypt, safeDecrypt } from '../utils/encrypt.js';
 import logger from '../utils/logger.js';
+import { sendAlert } from '../utils/alert.js';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -85,6 +86,7 @@ export const exchangePublicToken = async (req, res) => {
       plaidItemId: itemId,
     });
 
+    sendAlert("plaid.bank_linked", req.user.userId, req.ip);
     res.status(200).json({
       success: true,
       message: 'Bank account linked successfully',
@@ -398,6 +400,7 @@ export const removePlaidLink = async (req, res) => {
       $set: { transactions: [] },
     });
 
+    sendAlert("plaid.bank_unlinked", req.user.userId, req.ip);
     res.status(200).json({
       success: true,
       message: 'Bank account unlinked and all transactions deleted',

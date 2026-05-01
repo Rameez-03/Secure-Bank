@@ -1,4 +1,5 @@
 import rateLimit from "express-rate-limit";
+import { sendAlert } from "../utils/alert.js";
 
 const isDev = process.env.NODE_ENV !== "production";
 
@@ -28,7 +29,10 @@ export const authLimiter = rateLimit({
   skip: skipInDev,
   standardHeaders: true,
   legacyHeaders: false,
-  handler: json429,
+  handler: (req, res) => {
+    sendAlert("rate_limit.auth", "unknown", req.ip);
+    json429(req, res);
+  },
 });
 
 // Plaid sync: 100 per 15 min (API cost protection)

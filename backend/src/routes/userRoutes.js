@@ -5,6 +5,7 @@ import User from "../models/userModel.js";
 import { getHealthScore } from "../controllers/healthScoreController.js";
 import { safeDecrypt } from "../utils/encrypt.js";
 import logger from "../utils/logger.js";
+import { sendAlert } from "../utils/alert.js";
 
 const router = express.Router();
 
@@ -173,6 +174,7 @@ router.get("/:id/export", protect, async (req, res) => {
       })),
     };
 
+    sendAlert("data.export", req.user.userId, req.ip);
     res.setHeader("Content-Disposition", `attachment; filename="securebank-export-${Date.now()}.json"`);
     res.setHeader("Content-Type", "application/json");
     return res.status(200).json(exportPayload);
@@ -243,6 +245,7 @@ router.delete("/:id", protect, async (req, res) => {
     await Transaction.deleteMany({ userId: req.params.id });
     await User.findByIdAndDelete(req.params.id);
 
+    sendAlert("account.deleted", req.user.userId, req.ip);
     res.clearCookie("rt", COOKIE_CLEAR_OPTIONS);
 
     res.status(200).json({ success: true, message: "Account deleted successfully" });
