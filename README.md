@@ -2,6 +2,8 @@
 
 A full-stack personal finance application built to demonstrate production-grade security engineering, GRC compliance, and a DevSecOps pipeline — not just a working app, but one built the way it would need to be built in a regulated, security-conscious environment.
 
+[![Security Audit](https://img.shields.io/badge/Security-Audit_Report-red)](SECURITY.md) [![DevSecOps](https://img.shields.io/badge/DevSecOps-Pipeline-blue)](DEVSECOPS.md) [![GDPR Compliance](https://img.shields.io/badge/Compliance-UK_GDPR-green)](docs/COMPLIANCE.md) [![CI](https://github.com/Rameez-03/Secure-Bank/actions/workflows/ci.yml/badge.svg)](https://github.com/Rameez-03/Secure-Bank/actions/workflows/ci.yml)
+
 ![Landing Page](docs/screenshots/landing.png)
 
 ---
