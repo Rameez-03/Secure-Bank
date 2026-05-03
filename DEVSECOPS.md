@@ -195,3 +195,196 @@ The alerting logic lives in `backend/src/utils/alert.js`. It is:
 - **Non-blocking** — `fetch()` with no `await`, errors caught silently so a failed webhook never affects the user response
 - **Opt-in** — if `N8N_WEBHOOK_URL` is not set, the function returns immediately with no side effects
 - **Throttle state is in-memory** — resets on server restart, which is intentional (a fresh deploy clears stale throttle state)
+
+---
+
+## HTTPS Deployment — AWS EC2 + Let's Encrypt
+
+### Objective
+
+Deploy the application to production over HTTPS with a valid SSL certificate and automatic HTTP → HTTPS redirection. The Arko SAST scan had previously flagged the HTTP-only configuration as a residual risk (R-04, R-10). This phase closes both.
+
+### Infrastructure
+
+| Component | Detail |
+|-----------|--------|
+| Cloud provider | AWS EC2 — t3.micro, eu-west-2 (London) |
+| Static IP | Elastic IP `35.176.189.75` — prevents IP change on instance restart |
+| Domain | `securebankweb.duckdns.org` — free subdomain via DuckDNS, pointed at Elastic IP |
+| TLS certificate | Let's Encrypt — free, 90-day auto-renewing certificate via Certbot |
+| Port | 443 (HTTPS) added to EC2 security group inbound rules; port 80 redirects to 443 |
+
+![HTTPS Deployed](docs/screenshots/HTTPS.png)
+![HTTPS Dashboard](docs/screenshots/HTTPSdashboard.png)
+![Digital Certificate](docs/screenshots/DigitalCertificate.png)
+
+### Implementation
+
+The nginx config was updated to handle two server blocks — one that redirects all HTTP traffic to HTTPS, and one that serves the app over TLS:
+
+```nginx
+# Redirect HTTP → HTTPS
+server {
+    listen 80;
+    server_name securebankweb.duckdns.org;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    ssl_certificate     /etc/letsencrypt/live/securebankweb.duckdns.org/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/securebankweb.duckdns.org/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ...
+}
+```
+
+`docker-compose.yml` was updated to expose port 443 and mount the Let's Encrypt certificate directory as a read-only volume into the nginx container:
+
+```yaml
+ports:
+  - "80:80"
+  - "443:443"
+volumes:
+  - /etc/letsencrypt:/etc/letsencrypt:ro
+```
+
+Certbot was installed on the EC2 host and used in standalone mode to obtain the certificate. Port 80 was briefly freed by stopping the frontend container, the certificate was issued, and the container was rebuilt with the updated HTTPS config.
+
+![HTTPS Inbound Rule](docs/screenshots/HTTPSInboundRule.png)
+![Deploy HTTPS](docs/screenshots/DeployHTTPS.png)
+
+---
+
+## Security Header Hardening — Mozilla Observatory
+
+### Objective
+
+After deploying HTTPS, the application's HTTP security headers were audited using Mozilla Observatory to identify any gaps in the browser-level security posture.
+
+### Initial Scan — D (30/100)
+
+![Mozilla Observatory Initial Scan](docs/screenshots/MozillaScan1.png)
+
+The initial scan returned a **D grade (30/100)** with 4 failing tests:
+
+| Header | Score Impact | Issue |
+|--------|-------------|-------|
+| Content Security Policy (CSP) | −25 | Not implemented on nginx-served frontend |
+| Strict-Transport-Security (HSTS) | −20 | Missing — browser not instructed to enforce HTTPS |
+| X-Frame-Options | −20 | Missing — site embeddable in iframes (clickjacking risk) |
+| X-Content-Type-Options | −5 | Missing — MIME-type sniffing not disabled |
+
+**Root cause:** Helmet.js (which sets security headers) only applies to Express API responses. The React frontend is served directly by nginx, which had no header configuration. These two layers needed separate treatment.
+
+### Remediation
+
+All four missing headers were added to the nginx `server` block alongside a full Content Security Policy tailored to the application's requirements (Plaid CDN, self-hosted assets, Styled Components inline styles):
+
+```nginx
+add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header X-Frame-Options "SAMEORIGIN" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://cdn.plaid.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://securebankweb.duckdns.org https://*.plaid.com; frame-src https://cdn.plaid.com; frame-ancestors 'none'; form-action 'self';" always;
+server_tokens off;
+```
+
+**CSP design decisions:**
+- `style-src 'unsafe-inline'` — required by Styled Components (CSS-in-JS generates inline styles at runtime; cannot use hashes)
+- `https://*.plaid.com` wildcard in `connect-src` — Plaid uses multiple API subdomains; narrowing would break the bank link flow
+- `frame-src https://cdn.plaid.com` — Plaid Link renders in an iframe served from Plaid's CDN
+- `form-action 'self'` — prevents form submissions being redirected to external domains
+- `server_tokens off` — suppresses nginx version from `Server` response header (removes version fingerprinting)
+
+### Post-Fix Rescan — A+ (110/100)
+
+![Mozilla Observatory A+ Rescan](docs/screenshots/MozillaScan2.png)
+
+| Scan | Score | Grade | Tests Passed |
+|------|-------|-------|-------------|
+| Initial | 30/100 | D | 6/10 |
+| Post-fix | 110/100 | **A+** | **10/10** |
+
+All 10 tests passing. The CSP implementation alone contributed +25 to the score. The full header set now meets or exceeds Mozilla's recommended baseline.
+
+### SSL Labs — TLS Configuration
+
+SSL Labs was used to independently verify the TLS configuration, cipher suite strength, and certificate chain.
+
+![SSL Labs Rating](docs/screenshots/SSLlabsRating.png)
+
+TLSv1.2 and TLSv1.3 are enforced; weak cipher suites are excluded; the Let's Encrypt certificate chain is valid and trusted.
+
+---
+
+## Penetration Testing — OWASP ZAP (2026-05-03)
+
+### Objective
+
+With the application live on HTTPS and all passive security controls in place, an automated penetration test was performed against the production deployment to actively probe for exploitable vulnerabilities — and to verify that the n8n + Slack alerting system responds to real attacks in real time.
+
+### Tool
+
+**OWASP ZAP** (Zed Attack Proxy) — industry-standard open-source DAST tool. Automated scan performed against `https://securebankweb.duckdns.org`.
+
+ZAP ran two phases:
+1. **Spider** — crawled all reachable pages and endpoints to build a site map
+2. **Active Scan** — probed each discovered endpoint with attack payloads: SQL injection, XSS, path traversal, header injection, CSRF, server misconfiguration
+
+![ZAP Automated Attack](docs/screenshots/ZAPAutomatedAttack.png)
+![Attack in Progress](docs/screenshots/Attack.png)
+
+### Findings
+
+**0 High / 0 Critical findings.** All application-layer attacks failed. The 9 alerts raised were all Medium, Low, or Informational:
+
+| Finding | Risk | Assessment |
+|---------|------|------------|
+| CSP: Missing `form-action` directive | Medium | Fixed immediately — `form-action 'self'` added to CSP |
+| CSP: Wildcard `*.plaid.com` in `connect-src` | Medium | Accepted — required for Plaid API multi-subdomain architecture |
+| CSP: `unsafe-inline` in `style-src` | Medium | Accepted — required by Styled Components CSS-in-JS |
+| Sub Resource Integrity (SRI) missing | Medium | Accepted — all scripts self-hosted; no third-party script integrity risk |
+| Server leaks version via `Server` header | Low | Fixed immediately — `server_tokens off` added to nginx |
+| Information disclosure (JS comments) | Low | Informational — build-time comments in bundled JS; no sensitive data |
+| Cache-control headers | Low | Informational — static assets cached; acceptable for SPA |
+| Modern Web Application detection | Informational | Expected — ZAP identifying React SPA |
+| User-Agent fuzzing | Informational | No behaviour change on unusual User-Agent strings |
+
+### Fixes Applied During Pen Test
+
+Two findings were remediated immediately on discovery:
+
+```nginx
+# Added to CSP
+form-action 'self';
+
+# Added to nginx server block
+server_tokens off;
+```
+
+### Live Alerting During Attack
+
+With the alerting pipeline connected to the production deployment, the brute-force and rate-limit attacks triggered real-time Slack notifications during the pen test:
+
+![Slack Invalid Password Alert](docs/screenshots/SlackInvalidPasswordAlert.png)
+![Updated Slack Alert](docs/screenshots/UpdatedSlackAlert.png)
+
+The alerts confirmed:
+- `login.account_locked` HIGH fired after 5 consecutive failed login attempts
+- `rate_limit.auth` HIGH fired when the auth endpoint was hammered in rapid succession
+- Throttling worked correctly — MEDIUM events deduplicated per IP over the 5-minute window
+
+### Assessment
+
+The application withstood the automated pen test with no exploitable vulnerabilities found. The controls implemented across the hardening passes — IDOR scoping, injection sanitisation, rate limiting, JWT algorithm pinning, bcrypt hashing, httpOnly cookies — all held under active attack conditions.
+
+| Attack | Result |
+|--------|--------|
+| SQL / NoSQL injection | ❌ Blocked — `express-mongo-sanitize` |
+| Cross-Site Scripting (XSS) | ❌ Blocked — CSP + output encoding |
+| Authentication bypass | ❌ Blocked — JWT algorithm pinning |
+| IDOR (cross-user data access) | ❌ Blocked — `userId` scoping on all queries |
+| Brute force | ❌ Blocked — rate limiter + account lockout; HIGH alert fired |
+| Clickjacking | ❌ Blocked — `frame-ancestors 'none'` in CSP |
+| HTTPS downgrade | ❌ Blocked — HSTS + HTTP → HTTPS redirect |

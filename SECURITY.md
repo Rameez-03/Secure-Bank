@@ -20,6 +20,7 @@
 | 2.0 | 2026-04-26 | Restructured to full audit standard: scope, asset inventory, threat model, risk scoring methodology, residual risk register, attestation |
 | 2.1 | 2026-04-28 | Automated SAST scan via Arko — 2 findings identified, documented as R-10 and R-11 |
 | 2.2 | 2026-04-30 | Snyk scanning added — findings moved to DEVSECOPS.md; cross-reference added to §15 |
+| 2.3 | 2026-05-04 | HTTPS deployed on AWS EC2 (Let's Encrypt, DuckDNS); pen test performed (OWASP ZAP); R-04 and R-10 closed; pen test findings documented in §15 |
 
 ---
 
@@ -52,7 +53,7 @@
 **Type:** White-box (full source code access)  
 **Method:** Manual static code review assisted by `npm audit`; automated SAST via Arko (2026-04-28)  
 **Coverage:** All backend controllers, middleware, models, and routes; all frontend pages, hooks, and services  
-**Dynamic testing:** No DAST or penetration testing has been performed. A third-party pentest is recommended before any production deployment with real user data.
+**Dynamic testing:** OWASP ZAP automated penetration test performed against live HTTPS deployment `https://securebankweb.duckdns.org` (2026-05-03). 0 High/Critical findings. Full results in §15.
 
 ### 1.4 Standards Referenced
 
@@ -131,7 +132,7 @@ Threats are identified using the STRIDE methodology applied to each asset catego
 | Forged JWT access token to bypass authentication | User session | HS256 algorithm pinned; `JWT_SECRET` validated at startup; server exits if absent | ✅ Mitigated |
 | Spoofed password reset token to hijack an account | Account recovery | 32-byte random token (256-bit entropy); SHA-256 hash-on-store; 1-hr expiry; single-use `$unset` | ✅ Mitigated |
 | Spoofed `X-Forwarded-For` header to evade IP rate limiting | Rate limiter | `trust proxy` only set in production; dev traffic uses real source IP | ✅ Mitigated |
-| Credential stuffing using breached email/password pairs | User credentials | Rate limiting on auth endpoints; strong 12-char+ password policy | ✅ Partially mitigated — no account lockout |
+| Credential stuffing using breached email/password pairs | User credentials | Rate limiting on auth endpoints; account lockout after 5 failures (15-min lock); strong 12-char+ password policy | ✅ Mitigated |
 
 ### 4.2 Tampering — Data Integrity Attacks
 
@@ -546,13 +547,13 @@ All unresolved findings from across all fix passes, consolidated into a single a
 | R-01 | JWT access token not invalidated on logout — 15-min window where a stolen token remains valid | Authentication | 3 | 4 | 12 | **Medium** | Redis denylist keyed on `jti`; check on every authenticated request |
 | R-02 | ~~No account lockout after repeated failed logins~~ **Closed** — `failedLoginAttempts` + `lockUntil`; 15-min lock after 5 failures | Authentication | 1 | 3 | 3 | **Low** | ✅ Implemented |
 | R-03 | ~~No structured audit log~~ **Closed** — Winston JSON logger; auth events (login/logout/register/password reset) emit structured events with userId + IP | Repudiation | 1 | 4 | 4 | **Low** | ✅ Implemented |
-| R-04 | No HTTPS enforcement — traffic unencrypted in transit if deployed without TLS termination | Transport | 2 | 4 | 8 | **Medium** | Enforce via nginx `return 301 https://` or add HTTPS redirect middleware |
+| R-04 | ~~No HTTPS enforcement~~ **Closed** — Let's Encrypt TLS certificate deployed on EC2; nginx enforces HTTP → HTTPS redirect; HSTS header set (`max-age=31536000; includeSubDomains`) | Transport | 1 | 4 | 4 | **Low** | ✅ Closed 2026-05-03 |
 | R-05 | No email verification on registration — anyone can register with an unowned email address | Identity | 3 | 2 | 6 | **Medium** | `ENABLE_EMAIL_VERIFICATION` flag exists in `.env` — needs implementation |
 | R-06 | CSRF tokens not implemented — `SameSite: strict` mitigates most vectors but not all cross-origin flows | Session | 2 | 3 | 6 | **Medium** | Implement synchronised-token pattern alongside cookie auth |
 | R-07 | No two-factor authentication — single credential factor only | Authentication | 2 | 3 | 6 | **Medium** | `ENABLE_2FA` flag exists in `.env` — needs TOTP implementation (RFC 6238) |
 | R-08 | Redis configured in `.env` but unused — prerequisite for R-01 token blacklist | Infrastructure | 1 | 3 | 3 | **Low** | Required dependency for R-01 |
 | R-09 | No API versioning — `/api/v1/` prefix not applied | Maintainability | 1 | 2 | 2 | **Low** | Recommended before public release |
-| R-10 | CORS_ORIGIN set to HTTP — allows protocol downgrade; MitM attacker on the network path can intercept traffic and steal JWT tokens or httpOnly cookies if SameSite is not Strict | Transport | 3 | 4 | 12 | **Medium** | Set `CORS_ORIGIN` to `https://` once a domain and TLS certificate are provisioned. Identified by Arko SAST (docker-compose.yml:36) |
+| R-10 | ~~CORS_ORIGIN set to HTTP~~ **Closed** — `CORS_ORIGIN` and `FRONTEND_URL` updated to `https://securebankweb.duckdns.org`; TLS deployed; Arko finding fully resolved | Transport | 1 | 4 | 4 | **Low** | ✅ Closed 2026-05-03 |
 | R-11 | Application secrets loaded via `env_file` directive — if the `.env` file is committed to version control, baked into a container image, or accessible via directory traversal, all secrets (JWT keys, Plaid credentials, encryption key, MongoDB URI) are compromised | Secrets Management | 2 | 5 | 10 | **Medium** | `.env` is gitignored and never committed. Production path: migrate to AWS Secrets Manager or inject secrets via orchestration platform environment. Identified by Arko SAST (docker-compose.yml:30) |
 
 ---
@@ -626,19 +627,78 @@ Both findings are logged in the Residual Risk Register as R-10 and R-11.
 
 ---
 
-> Snyk dependency and container scanning findings, CI pipeline details, and real-time alerting implementation are documented in [`DEVSECOPS.md`](DEVSECOPS.md).
+> Snyk dependency and container scanning findings, CI pipeline details, HTTPS deployment, security header hardening, and real-time alerting implementation are documented in [`DEVSECOPS.md`](DEVSECOPS.md).
 
 ---
 
-## 15. Attestation
+## 15. Penetration Test — OWASP ZAP (2026-05-03)
+
+An automated penetration test was performed against the live production deployment at `https://securebankweb.duckdns.org` using **OWASP ZAP** (Zed Attack Proxy).
+
+### 15.1 Scope & Method
+
+| Item | Detail |
+|------|--------|
+| Target | `https://securebankweb.duckdns.org` |
+| Tool | OWASP ZAP — automated spider + active scan |
+| Type | Black-box DAST (no credentials provided to scanner) |
+| Date | 2026-05-03 |
+| Tester | Rameez (developer / authorised tester) |
+
+### 15.2 Findings
+
+**Result: 0 High / 0 Critical vulnerabilities.** All application-layer attack vectors failed.
+
+| # | Finding | Risk | Status |
+|---|---------|------|--------|
+| P-01 | CSP missing `form-action` directive | Medium | ✅ Fixed — `form-action 'self'` added to nginx CSP |
+| P-02 | CSP `*.plaid.com` wildcard in `connect-src` | Medium | Accepted — required for Plaid multi-subdomain API |
+| P-03 | CSP `unsafe-inline` in `style-src` | Medium | Accepted — required by Styled Components CSS-in-JS |
+| P-04 | Sub Resource Integrity (SRI) missing | Medium | Accepted — all scripts self-hosted; no third-party script risk |
+| P-05 | `Server` header exposes nginx version | Low | ✅ Fixed — `server_tokens off` added to nginx |
+| P-06 | JS bundle contains build-time comments | Low | Accepted — no sensitive information in comments |
+| P-07 | Cache-control headers on static assets | Low | Accepted — standard SPA caching; no sensitive data cached |
+
+### 15.3 Attack Results
+
+| Attack Vector | Outcome | Control That Blocked It |
+|---------------|---------|------------------------|
+| SQL / NoSQL injection | ❌ Blocked | `express-mongo-sanitize` |
+| Cross-Site Scripting (XSS) | ❌ Blocked | CSP `default-src 'self'` + output encoding |
+| Authentication bypass | ❌ Blocked | JWT algorithm pinning (`HS256` only) |
+| IDOR — cross-user data access | ❌ Blocked | All queries scoped to `req.user.userId` |
+| Brute force | ❌ Blocked | Rate limiter (30 req/15 min) + account lockout (5 attempts) |
+| Clickjacking | ❌ Blocked | CSP `frame-ancestors 'none'` |
+| HTTPS downgrade / MitM | ❌ Blocked | HSTS + HTTP → HTTPS redirect |
+| Session token theft | ❌ Blocked | httpOnly cookie; access token in JS memory only |
+
+### 15.4 Live Alerting Response
+
+The n8n + Slack real-time alerting system responded correctly to attack traffic:
+
+- Brute force (5 failed logins) → `login.account_locked` **HIGH** alert — immediate Slack notification
+- Auth endpoint hammering → `rate_limit.auth` **HIGH** alert — immediate Slack notification
+- MEDIUM event throttling worked correctly — no alert flooding
+
+![Slack Alert During Pen Test](docs/screenshots/SlackInvalidPasswordAlert.png)
+
+### 15.5 Assessment
+
+The application withstood automated black-box penetration testing with no exploitable vulnerabilities found. The security controls implemented across four hardening passes held under active attack conditions. The two Medium findings that were immediately actionable (P-01, P-05) were remediated on the same day.
+
+---
+
+## 16. Attestation
 
 **Assessed by:** Rameez (developer, Secure Bank project)  
-**Assessment date:** 2026-04-26  
-**Assessment type:** White-box code review (self-assessment)  
-**Methodology:** Manual static analysis; OWASP ASVS 4.0 code review; NIST CSF 2.0 structure; STRIDE threat modelling; Likelihood × Impact risk scoring  
+**Initial assessment date:** 2026-04-26  
+**Penetration test date:** 2026-05-03  
+**Report updated:** 2026-05-04  
+**Assessment type:** White-box code review + automated DAST penetration test  
+**Methodology:** Manual static analysis; OWASP ASVS 4.0 code review; NIST CSF 2.0 structure; STRIDE threat modelling; Likelihood × Impact risk scoring; OWASP ZAP automated DAST
 
-This report documents the security posture of the Secure Bank application as of the date above. All findings have been recorded in good faith. Identified vulnerabilities have been remediated as described in each Fix Pass section. Residual risks are documented in the Risk Register (§12) and accepted pending the infrastructure changes noted therein.
+This report documents the security posture of the Secure Bank application across all phases: initial hardening, automated SAST (Arko), dependency scanning (Snyk), HTTPS deployment, security header hardening (Mozilla Observatory A+), and automated penetration testing (OWASP ZAP — 0 High/Critical findings). All findings have been recorded in good faith and remediated or accepted with documented rationale.
 
-> **Important:** This is a self-assessment. No independent third-party verification has been performed. A professional penetration test is strongly recommended before any production deployment with real user data or live financial transactions.
+> **Important:** This is a self-assessment with automated tooling. No independent third-party verification has been performed. Professional penetration testing and legal advice are recommended before any deployment with real user data or live financial transactions.
 
-**Signature:** _____________________ &nbsp;&nbsp;&nbsp; **Date:** 2026-04-26
+**Signature:** _____________________ &nbsp;&nbsp;&nbsp; **Date:** 2026-05-04

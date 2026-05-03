@@ -15,6 +15,7 @@
 | 1.0 | 2026-04-26 | Initial compliance audit — UK GDPR, OWASP Top 10, gap register |
 | 1.1 | 2026-04-26 | Implementation sprint: Privacy Policy built; data export/portability implemented; processing restriction toggle; health score disclosed; retention policy documented; DPIA, BREACH_REGISTER, DPA_RECORDS created; age verification added |
 | 2.0 | 2026-05-01 | Second audit: updated all statuses to reflect current state — Snyk continuous scanning closes A06; account lockout confirmed closes A07 lockout gap; Winston logging + n8n/Slack real-time alerting fully closes C-10; document condensed for readability |
+| 2.1 | 2026-05-04 | HTTPS deployed (Let's Encrypt, DuckDNS, nginx); A02 updated to Compliant; OWASP summary updated to 9 Compliant / 1 Partial |
 
 ---
 
@@ -146,7 +147,7 @@ Full procedure: [BREACH_REGISTER.md](BREACH_REGISTER.md)
 | # | Risk | Key Controls | Status |
 |---|------|-------------|--------|
 | A01 | Broken Access Control | IDOR protection (`userId` scoping on all queries); CORS whitelist; ownership checks | ✅ **Compliant** |
-| A02 | Cryptographic Failures | bcrypt 12 rounds; AES-256-GCM; httpOnly cookies; HTTPS pending deployment | ⚠️ **Partial** — HTTPS infrastructure gap |
+| A02 | Cryptographic Failures | bcrypt 12 rounds; AES-256-GCM; httpOnly cookies; HTTPS enforced via Let's Encrypt + nginx redirect; HSTS enabled | ✅ **Compliant** |
 | A03 | Injection | `express-mongo-sanitize`; `hpp`; ODM parameterised queries; server-side validation | ✅ **Compliant** |
 | A04 | Insecure Design | STRIDE threat model; rate limiting; `isManual` guard; timing-safe login; enumeration prevention | ✅ **Compliant** |
 | A05 | Security Misconfiguration | Helmet (CSP/HSTS); CORS whitelist; generic 500 in production; no insecure defaults | ✅ **Compliant** |
@@ -156,7 +157,7 @@ Full procedure: [BREACH_REGISTER.md](BREACH_REGISTER.md)
 | A09 | Security Logging & Monitoring | Winston structured JSON audit log; Arko SAST; Snyk; Trivy CVE in CI; n8n + Slack real-time alerting | ✅ **Compliant** |
 | A10 | SSRF | No server-side URL fetches from user input | ✅ **N/A — Compliant** |
 
-**Summary:** 8 Compliant / 2 Partial (HTTPS infrastructure, MFA)
+**Summary:** 9 Compliant / 1 Partial (MFA — accepted scope limitation)
 
 ---
 
@@ -197,7 +198,7 @@ Full procedure: [BREACH_REGISTER.md](BREACH_REGISTER.md)
 | ICO registration | DPA 2018 s.108 | ❌ Pending admin action |
 | Cookies | PECR 2003 | ✅ Compliant — strictly necessary only; disclosed |
 | Access control | OWASP A01 | ✅ Compliant |
-| Cryptography | OWASP A02 | ⚠️ Partial — HTTPS infrastructure gap |
+| Cryptography | OWASP A02 | ✅ Compliant — HTTPS enforced; HSTS; Let's Encrypt certificate |
 | Injection | OWASP A03 | ✅ Compliant |
 | Insecure design | OWASP A04 | ✅ Compliant |
 | Misconfiguration | OWASP A05 | ✅ Compliant |
@@ -207,7 +208,7 @@ Full procedure: [BREACH_REGISTER.md](BREACH_REGISTER.md)
 | Logging & monitoring | OWASP A09 | ✅ Compliant |
 | SSRF | OWASP A10 | ✅ N/A — Compliant |
 
-**Overall: 15 Compliant / 4 Partial / 1 Pending admin action**
+**Overall: 16 Compliant / 3 Partial / 1 Pending admin action**
 
 ---
 
